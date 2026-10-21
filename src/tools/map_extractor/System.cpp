@@ -33,6 +33,7 @@
 #endif
 
 #include "dbcfile.h"
+#include "LetteredPatches.h"
 #include "mpq_libmpq04.h"
 #include "StringFormat.h"
 
@@ -1160,6 +1161,18 @@ void LoadLocaleMPQFiles(int const locale)
     }
 }
 
+// Opened last so they override everything else, as in the client (HD packs ship DBCs, terrain and WMOs this way).
+void LoadLetteredMPQFiles()
+{
+    std::string const dataDir = std::string(input_path) + "/Data/";
+    auto const exists = [](std::string const& path) { return FileExists(path.c_str()); };
+    for (std::string const& filename : LetteredPatches::Find(dataDir, exists))
+    {
+        printf("Loading lettered patch %s\n", filename.c_str());
+        new MPQArchive(filename.c_str());
+    }
+}
+
 void LoadCommonMPQFiles()
 {
     char filename[512];
@@ -1170,6 +1183,8 @@ void LoadCommonMPQFiles()
         if (FileExists(filename))
             new MPQArchive(filename);
     }
+
+    LoadLetteredMPQFiles();
 }
 
 inline void CloseMPQFiles()
@@ -1208,6 +1223,7 @@ int main(int argc, char* arg[])
             }
 
             //Extract DBC files
+            LoadLetteredMPQFiles();
             if (FirstLocale < 0)
             {
                 FirstLocale = i;

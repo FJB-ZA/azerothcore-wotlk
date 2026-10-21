@@ -36,6 +36,7 @@
 #include "vmapexport.h"
 #include "adtfile.h"
 #include "dbcfile.h"
+#include "LetteredPatches.h"
 #include "mpq_libmpq04.h"
 #include "wdtfile.h"
 #include "wmo.h"
@@ -349,6 +350,14 @@ bool fillArchiveNameVector(std::vector<std::string>& pArchiveNames)
         }
         if (scan_patches(path, pArchiveNames))
             foundOne = true;
+    }
+
+    // Last, so they override everything else, as in the client (HD packs ship terrain and WMOs this way).
+    auto const exists = [](std::string const& file) { return FileExists(file.c_str()); };
+    for (std::string const& patch : LetteredPatches::Find(in_path, exists))
+    {
+        printf("Lettered patch: %s\n", patch.c_str());
+        pArchiveNames.push_back(patch);
     }
 
     printf("\n");
