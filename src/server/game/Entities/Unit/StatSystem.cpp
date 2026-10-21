@@ -285,6 +285,8 @@ void Player::UpdateArmor()
 
     value *= GetPctModifierValue(unitMod, TOTAL_PCT);
 
+    value *= m_mentorArmorScale;  // mentor mode: armour of the mentored level
+
     SetArmor(int32(value));
 
     UpdateAttackPowerAndDamage();                           // armor dependent auras update for SPELL_AURA_MOD_ATTACK_POWER_OF_ARMOR

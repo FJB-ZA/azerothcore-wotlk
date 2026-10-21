@@ -1224,7 +1224,7 @@ uint32 Unit::DealDamage(Unit* attacker, Unit* victim, uint32 damage, CleanDamage
                 if (!attackerPlayer && attacker->m_movedByPlayer)
                     attackerPlayer = attacker->m_movedByPlayer->ToPlayer();
                 if (attackerPlayer)
-                    attackerLevel = attackerPlayer->GetLevel();
+                    attackerLevel = attackerPlayer->getLevelForTarget(victim);
             }
 
             victim->ToCreature()->LowerPlayerDamageReq(unDamage, damagedByPlayer, attackerLevel);
@@ -1918,7 +1918,7 @@ void Unit::CalculateMeleeDamage(Unit* victim, CalcDamageInfo* damageInfo, Weapon
         {
             damageInfo->HitInfo     |= HITINFO_GLANCING;
             damageInfo->TargetState  = VICTIMSTATE_HIT;
-            int32 leveldif = int32(victim->GetLevel()) - int32(GetLevel());
+            int32 leveldif = int32(victim->getLevelForTarget(this)) - int32(getLevelForTarget(victim));
             if (leveldif > 3)
                 leveldif = 3;
             float reducePercent = 1 - leveldif * 0.1f;
@@ -2317,10 +2317,11 @@ float Unit::GetEffectiveResistChance(Unit const* owner, SpellSchoolMask schoolMa
     }
 
     victimResistance = std::max(victimResistance, 0.0f);
-    uint8 effectiveCasterLevel = owner ? owner->GetLevel() : casterLevel;
+    uint8 effectiveCasterLevel = owner ? owner->getLevelForTarget(victim) : casterLevel;
+    uint8 const victimLevel = owner ? victim->getLevelForTarget(owner) : victim->GetLevel();
 
     if (effectiveCasterLevel && (!spellInfo || !spellInfo->HasAttribute(SPELL_ATTR0_CU_BINARY_SPELL)))
-        victimResistance += std::max(static_cast<float>(victim->GetLevel() - effectiveCasterLevel) * 5.0f, 0.0f);
+        victimResistance += std::max(static_cast<float>(victimLevel - effectiveCasterLevel) * 5.0f, 0.0f);
 
     // Per EJ research, the resistance constant is based on the caster's level. It should be equal
     // to 400 for a level 80 caster and 506.5 for a level 83 caster (boss).
@@ -3530,6 +3531,9 @@ uint32 Unit::GetDefenseSkillValue(Unit const* target) const
                        ? ToPlayer()->GetMaxSkillValue(SKILL_DEFENSE)
                        : ToPlayer()->GetSkillValue(SKILL_DEFENSE);
         value += uint32(ToPlayer()->GetRatingBonusValue(CR_DEFENSE_SKILL));
+        // Mentor mode: defence is capped at the mentored level, like a character of that level.
+        if (uint8 mentor = ToPlayer()->GetMentorLevel())
+            value = std::min<uint32>(value, mentor * 5u);
         return value;
     }
     else
@@ -3694,7 +3698,7 @@ uint32 Unit::GetWeaponSkillValue (WeaponAttackType attType, Unit const* target) 
             return 0;
 
         if (IsInFeralForm())
-            return GetMaxSkillValueForLevel();              // always maximized SKILL_FERAL_COMBAT in fact
+            return (player->GetMentorLevel() ? player->GetMentorLevel() : GetLevel()) * 5u;              // always maximized SKILL_FERAL_COMBAT in fact
 
         // weapon skill or (unarmed for base attack)
         uint32 skill = SKILL_UNARMED;
@@ -3721,6 +3725,9 @@ uint32 Unit::GetWeaponSkillValue (WeaponAttackType attType, Unit const* target) 
             default:
                 break;
         }
+        // Mentor mode: weapon skill is capped at the mentored level.
+        if (uint8 mentor = player->GetMentorLevel())
+            value = std::min<uint32>(value, mentor * 5u);
     }
     else
         value = GetUnitMeleeSkill(target);

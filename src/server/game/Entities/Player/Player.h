@@ -1194,6 +1194,14 @@ public:
     void GiveXP(uint32 xp, Unit* victim, float group_rate = 1.0f, bool isLFGReward = false);
     void GiveLevel(uint8 level);
 
+    // Mentor mode: while grouped with much lower-level members the player fights as a lower level.
+    // Level-dependent combat rules (hit, glancing, resists, skill caps, aggro, XP) read this level and
+    // armour is scaled; the mentor script also scales health, damage and healing. 0 = not mentoring.
+    void SetMentorLevel(uint8 level, float armorScale) { m_mentorLevel = level; m_mentorArmorScale = level ? armorScale : 1.0f; }
+    [[nodiscard]] uint8 GetMentorLevel() const { return m_mentorLevel; }
+    [[nodiscard]] float GetMentorArmorScale() const { return m_mentorArmorScale; }
+    uint8 getLevelForTarget(WorldObject const* target) const override { return m_mentorLevel ? m_mentorLevel : Unit::getLevelForTarget(target); }
+
     void InitStatsForLevel(bool reapplyMods = false);
 
     [[nodiscard]] bool HasActivePowerType(Powers power) override;
@@ -2990,6 +2998,9 @@ protected:
     uint8 m_grantableLevels;
 
     bool m_needZoneUpdate;
+
+    uint8 m_mentorLevel = 0;
+    float m_mentorArmorScale = 1.0f;
 
 private:
     // internal common parts for CanStore/StoreItem functions
