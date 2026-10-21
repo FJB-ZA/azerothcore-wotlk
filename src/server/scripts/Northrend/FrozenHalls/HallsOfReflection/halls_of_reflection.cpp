@@ -1382,7 +1382,8 @@ struct boss_frostsworn_general : public ScriptedAI
                 instance->SetData(ACTION_SPIRITUAL_REFLECTIONS_ACTIVATE, 1);
                 break;
             case EVENT_THROW_SHIELD:
-                if (Unit* target = SelectTargetFromPlayerList(40.0f, 0, true))
+                // Spell::CheckRange fails an NPC's Throw Shield inside 5 yd + melee range; pick only targets past that
+                if (Unit* target = SelectTarget(SelectTargetMethod::Random, 0, [this](Unit* u) { return u->IsPlayer() && me->IsInRange(u, 0.0f, 40.0f) && !me->IsWithinRange(u, 5.0f + me->GetMeleeRange(u)) && me->IsWithinLOSInMap(u); }))
                     DoCast(target, SPELL_THROW_SHIELD);
                 events.ScheduleEvent(EVENT_THROW_SHIELD, 10s);
                 break;
@@ -1450,6 +1451,7 @@ struct npc_hor_spiritual_reflection : public ScriptedAI
         me->UpdatePosition(me->GetHomePosition(), true);
         ScriptedAI::EnterEvadeMode(why);
         me->SetVisible(false);
+        me->SetImmuneToPC(true);
     }
 };
 

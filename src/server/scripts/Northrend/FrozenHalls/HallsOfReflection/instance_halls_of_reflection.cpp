@@ -454,6 +454,8 @@ public:
                     if (Creature* reflection = instance->GetCreature(_spiritualReflectionGUID[i]))
                         if (reflection->IsVisible())
                         {
+                            // the template spawns them IMMUNE_TO_PC, which keeps every threat reference offline
+                            reflection->SetImmuneToPC(false);
                             reflection->SetInCombatWithZone();
                             reflection->SetCanFly(false);
                             reflection->SetDisableGravity(false);
