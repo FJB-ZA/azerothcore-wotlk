@@ -5545,6 +5545,11 @@ bool Player::LoadFromDB(ObjectGuid playerGuid, CharacterDatabaseQueryHolder cons
 
     m_specsCount = fields[64].Get<uint8>();
     m_activeSpec = fields[65].Get<uint8>();
+    // solo-wow: spec slots. Never load a slot count or active slot outside what the character owns.
+    if (!m_specsCount || m_specsCount > MAX_TALENT_SPECS)
+        m_specsCount = m_specsCount ? MAX_TALENT_SPECS : 1;
+    if (m_activeSpec >= m_specsCount)
+        m_activeSpec = 0;
 
     LearnDefaultSkills();
     LearnCustomSpells();

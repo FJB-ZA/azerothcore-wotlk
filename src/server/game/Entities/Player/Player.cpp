@@ -14760,14 +14760,12 @@ bool Player::CanSeeTrainer(Creature const* creature) const
 void Player::BuildPlayerTalentsInfoData(WorldPacket* data)
 {
     *data << uint32(GetFreeTalentPoints());                 // unspentTalentPoints
-    *data << uint8(m_specsCount);                           // talent group count (0, 1 or 2)
-    *data << uint8(m_activeSpec);                           // talent group index (0 or 1)
+    // solo-wow: spec slots. The client's talent UI holds two groups at most, so it only sees the active slot.
+    *data << uint8(1);                                      // talent group count
+    *data << uint8(0);                                      // talent group index
 
-    if (m_specsCount > MAX_TALENT_SPECS)
-        m_specsCount = MAX_TALENT_SPECS;
-
-    for (uint32 specIdx = 0; specIdx < m_specsCount; ++specIdx)
     {
+        uint8 const specIdx = m_activeSpec;
         uint8 talentIdCount = 0;
         std::size_t pos = data->wpos();
         *data << uint8(talentIdCount);                      // [PH], talentIdCount
@@ -15516,7 +15514,7 @@ void Player::ActivateSpec(uint8 spec)
     if (GetActiveSpec() == spec)
         return;
 
-    if (spec > GetSpecsCount())
+    if (spec >= GetSpecsCount())
         return;
 
     // xinef: interrupt currently casted spell just in case

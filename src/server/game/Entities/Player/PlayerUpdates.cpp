@@ -2266,17 +2266,19 @@ void Player::UpdateSpecCount(uint8 count)
     if (count > curCount)
     {
         _SaveActions(trans); // make sure the button list is cleaned up
-        for (ActionButtonList::iterator itr = m_actionButtons.begin();
-             itr != m_actionButtons.end(); ++itr)
-        {
-            stmt = CharacterDatabase.GetPreparedStatement(CHAR_INS_CHAR_ACTION);
-            stmt->SetData(0, GetGUID().GetCounter());
-            stmt->SetData(1, 1);
-            stmt->SetData(2, itr->first);
-            stmt->SetData(3, itr->second.GetAction());
-            stmt->SetData(4, uint8(itr->second.GetType()));
-            trans->Append(stmt);
-        }
+        // solo-wow: spec slots. Every new talent group starts with a copy of the current bars.
+        for (uint8 group = curCount; group < count; ++group)
+            for (ActionButtonList::iterator itr = m_actionButtons.begin();
+                 itr != m_actionButtons.end(); ++itr)
+            {
+                stmt = CharacterDatabase.GetPreparedStatement(CHAR_INS_CHAR_ACTION);
+                stmt->SetData(0, GetGUID().GetCounter());
+                stmt->SetData(1, group);
+                stmt->SetData(2, itr->first);
+                stmt->SetData(3, itr->second.GetAction());
+                stmt->SetData(4, uint8(itr->second.GetType()));
+                trans->Append(stmt);
+            }
     }
     // Delete spec data for removed spec.
     else if (count < curCount)
