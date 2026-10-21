@@ -161,6 +161,9 @@ struct boss_devourer_of_souls : public BossAI
             {
                 switch (events.ExecuteEvent())
                 {
+                    case 0:
+                        // Nothing due: Repeat() would re-add the last event every tick of the channel
+                        break;
                     case EVENT_SPELL_PHANTOM_BLAST:
                         DoCastVictim(SPELL_PHANTOM_BLAST);
                         events.Repeat(5s);
