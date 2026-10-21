@@ -1735,6 +1735,36 @@ void LootTemplate::Process(Loot& loot, LootStore const& store, uint16 lootMode, 
         }
 }
 
+void LootTemplate::CollectNonQuestItems(std::set<uint32>& items, uint8 groupId, uint8 depth) const
+{
+    // Bound malformed reference cycles; never evaluate scripts or roll loot while planning.
+    if (depth >= 16)
+        return;
+    auto collect = [&](LootStoreItemList const& entries)
+    {
+        for (LootStoreItem const* item : entries)
+        {
+            if (!item || item->needs_quest || !(item->lootmode & LOOT_MODE_DEFAULT) || !item->maxcount)
+                continue;
+            if (item->reference)
+            {
+                if (LootTemplate const* reference = LootTemplates_Reference.GetLootFor(std::abs(item->reference)))
+                    reference->CollectNonQuestItems(items, item->groupid, depth + 1);
+            }
+            else if (item->itemid)
+                items.insert(item->itemid);
+        }
+    };
+    if (!groupId)
+        collect(Entries);
+    for (size_t index = 0; index < Groups.size(); ++index)
+        if ((!groupId || index + 1 == groupId) && Groups[index])
+        {
+            collect(*Groups[index]->GetExplicitlyChancedItemList());
+            collect(*Groups[index]->GetEqualChancedItemList());
+        }
+}
+
 // True if template includes at least 1 quest drop entry
 bool LootTemplate::HasQuestDrop(LootTemplateMap const& store) const
 {

@@ -268,6 +268,9 @@ public:
     bool addConditionItem(Condition* cond);
     [[nodiscard]] bool isReference(uint32 id) const;
 
+    // Planning only: possible ordinary drops, without rolling or granting loot.
+    void CollectNonQuestItems(std::set<uint32>& items, uint8 groupId = 0, uint8 depth = 0) const;
+
 private:
     LootStoreItemList Entries;                          // not grouped only
     LootGroups        Groups;                           // groups have own (optimised) processing, grouped entries go there
