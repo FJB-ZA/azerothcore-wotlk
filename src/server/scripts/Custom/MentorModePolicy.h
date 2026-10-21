@@ -18,6 +18,8 @@ namespace MentorMode
 inline constexpr uint8_t MinGap = 5;   // mentoring starts this many levels above the lowest member nearby
 inline constexpr uint8_t Margin = 2;   // the mentor then fights this many levels above that member
 inline constexpr uint32_t CheckIntervalMs = 2000;
+// The Mentoring debuff (custom spell; solo-wow patches/client/spell-data). Its stack count is the mentored level.
+inline constexpr uint32_t AuraSpell = 990001;
 
 // The level to fight at, or 0 when no mentoring applies.
 constexpr uint8_t TargetLevel(uint8_t level, uint8_t lowestMember)

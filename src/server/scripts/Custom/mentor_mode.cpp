@@ -20,6 +20,7 @@
 #include "ObjectMgr.h"
 #include "Player.h"
 #include "ScriptMgr.h"
+#include "SpellAuras.h"
 #include "SpellInfo.h"
 
 // Mentor mode: while grouped with members at least MentorMode::MinGap levels lower on the same map, a
@@ -94,6 +95,29 @@ void ApplyMentorLevel(Player* player, uint8 level)
     ChatHandler(player->GetSession()).SendSysMessage(message);
     player->GetSession()->SendAreaTriggerMessage(message);
 }
+
+// Keeps the Mentoring debuff in step with the mentor level, so it comes back after anything strips it and a
+// saved one is dropped at login once mentoring is over. Without the spell data loaded, AddAura does nothing.
+void SyncAura(Player* player)
+{
+    uint8 const level = player->GetMentorLevel();
+    if (!level)
+    {
+        player->RemoveAurasDueToSpell(MentorMode::AuraSpell);
+        return;
+    }
+    Aura* aura = player->GetAura(MentorMode::AuraSpell);
+    if (!aura)
+        aura = player->AddAura(MentorMode::AuraSpell, player);
+    if (aura && aura->GetStackAmount() != level)
+        aura->SetStackAmount(level);
+}
+
+void Update(Player* player)
+{
+    ApplyMentorLevel(player, DesiredMentorLevel(player));
+    SyncAura(player);
+}
 }  // namespace
 
 class MentorModeWorldScript : public WorldScript
@@ -122,7 +146,7 @@ public:
     {
     }
 
-    void OnPlayerLogin(Player* player) override { ApplyMentorLevel(player, DesiredMentorLevel(player)); }
+    void OnPlayerLogin(Player* player) override { Update(player); }
 
     // Re-checked every 2 seconds: group changes, level-ups and map changes all settle within that.
     void OnPlayerAfterUpdate(Player* player, uint32 diff) override
@@ -135,7 +159,7 @@ public:
                 return;
             timer = 0;
         }
-        ApplyMentorLevel(player, DesiredMentorLevel(player));
+        Update(player);
     }
 
     void OnPlayerAfterUpdateMaxHealth(Player* player, float& value) override
