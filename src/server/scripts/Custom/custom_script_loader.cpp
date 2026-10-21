@@ -19,6 +19,7 @@
 // void MyExampleScript()
 void AddSC_mentor_mode();
 void AddSC_spec_slots();
+void AddSC_boost();
 
 // The name of this function should match:
 // void Add${NameOfDirectory}Scripts()
@@ -27,4 +28,5 @@ void AddCustomScripts()
     // MyExampleScript()
     AddSC_mentor_mode();
     AddSC_spec_slots();
+    AddSC_boost();
 }
