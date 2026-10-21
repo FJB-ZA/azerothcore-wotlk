@@ -22,9 +22,7 @@
 /e2e/.env
 /apps/joiner
 /deps/deno
-/data/sql/custom/*
-/src/server/scripts/Custom/*
-!/src/server/scripts/Custom/README.md
+/data/sql/custom/db_world/solo_wow_spells.sql
 
 /*.override.yml
 /*.override.yaml
