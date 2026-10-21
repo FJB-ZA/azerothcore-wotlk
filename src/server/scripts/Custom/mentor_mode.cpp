@@ -89,6 +89,9 @@ void ApplyMentorLevel(Player* player, uint8 level)
     player->UpdateMaxHealth();
     if (player->IsAlive())
         player->SetHealth(std::max<uint32>(1, uint32(player->GetMaxHealth() * healthPct / 100.0f)));
+    // Bots mentor too (they join lower players' groups), but have no screen to tell.
+    if (player->GetSession()->IsSocketClosed())
+        return;
     std::string const message = level ? "Mentor mode: you now fight as level " + std::to_string(level) +
                                             " alongside your lower-level friends."
                                       : "Mentor mode ended: you're back to full strength.";
