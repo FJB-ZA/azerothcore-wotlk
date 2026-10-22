@@ -11,13 +11,13 @@ namespace LetteredPatches
 inline constexpr char First = 'A';
 inline constexpr char Last = 'Z';
 
-// The client's spelling first; the lower-case ones only matter on case-sensitive file systems.
+// The client's spelling first, then Project Reforged's (.mpq); the others only matter on case-sensitive file systems.
 inline std::vector<std::string> Candidates(char letter)
 {
     char const upper = (letter >= 'a' && letter <= 'z') ? static_cast<char>(letter - 'a' + 'A') : letter;
     char const lower = static_cast<char>(upper - 'A' + 'a');
     std::string const prefix = "patch-";
-    return { prefix + upper + ".MPQ", prefix + lower + ".MPQ", prefix + lower + ".mpq" };
+    return { prefix + upper + ".MPQ", prefix + upper + ".mpq", prefix + lower + ".MPQ", prefix + lower + ".mpq" };
 }
 
 // Existing patches under dataDir in load order; opened in this order, a later letter overrides an earlier one.
