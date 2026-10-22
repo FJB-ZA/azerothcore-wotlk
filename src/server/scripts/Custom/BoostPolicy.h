@@ -48,20 +48,40 @@ constexpr uint8_t EraFor(uint8_t progressionStep, bool individualProgression, ui
     return era < account ? era : account;
 }
 
-// Like retail, a boost lands at the start of the era's own content.
-constexpr uint8_t BoostLevel(uint8_t era) { return era >= ERA_WRATH ? 68 : 58; }
+// Which boost: like retail, the start of the era's own content; in Wrath also straight to the level cap.
+enum Kind : uint8_t
+{
+    KIND_ERA_START = 0,
+    KIND_LEVEL_CAP = 1,
+    KIND_COUNT
+};
 
-// Which item pool (solo_wow_boost_pool.tier) gears the boost: 0 vanilla items, 1 Outland items.
-constexpr uint8_t GearTier(uint8_t era) { return era >= ERA_WRATH ? 1 : 0; }
+// The level-cap boost exists only in Wrath, where 80 is the cap.
+constexpr bool Offered(uint8_t era, uint8_t kind)
+{
+    return kind == KIND_ERA_START || (kind == KIND_LEVEL_CAP && era >= ERA_WRATH);
+}
+
+constexpr uint8_t BoostLevel(uint8_t era, uint8_t kind = KIND_ERA_START)
+{
+    return kind == KIND_LEVEL_CAP ? 80 : era >= ERA_WRATH ? 68 : 58;
+}
+
+// Which item pool (solo_wow_boost_pool.tier) gears the boost: 0 vanilla items, 1 Outland items, 2 the level
+// 80 entry set (item level 187-200, below Naxxramas).
+constexpr uint8_t GearTier(uint8_t era, uint8_t kind = KIND_ERA_START)
+{
+    return kind == KIND_LEVEL_CAP ? 2 : era >= ERA_WRATH ? 1 : 0;
+}
 
 constexpr char const* EraName(uint8_t era) { return era >= ERA_WRATH ? "Wrath" : era == ERA_TBC ? "TBC" : "vanilla"; }
 
 inline constexpr uint8_t ClassDeathKnight = 6;
 
 // Death knights start at 55 with their own gear and quest chain, so they are never boosted.
-constexpr bool CanBoost(uint8_t level, uint8_t classId, uint8_t era)
+constexpr bool CanBoost(uint8_t level, uint8_t classId, uint8_t era, uint8_t kind = KIND_ERA_START)
 {
-    return classId != ClassDeathKnight && level < BoostLevel(era);
+    return Offered(era, kind) && classId != ClassDeathKnight && level < BoostLevel(era, kind);
 }
 
 struct Spot
@@ -72,8 +92,10 @@ struct Spot
 };
 
 // Flight masters and quest givers at each era's starting hub, from the world database spawns.
-constexpr Spot Landing(uint8_t era, bool horde)
+constexpr Spot Landing(uint8_t era, bool horde, uint8_t kind = KIND_ERA_START)
 {
+    if (kind == KIND_LEVEL_CAP)
+        return Spot{571, 5813.37f, 453.403f, 658.834f, 4.45059f, "Dalaran, Crystalsong Forest"};
     if (era >= ERA_WRATH)
         return horde ? Spot{571, 2922.39f, 6244.39f, 208.835f, 2.82743f, "Warsong Hold, Borean Tundra"}
                      : Spot{571, 2272.98f, 5171.82f, 11.246f, 1.74533f, "Valiance Keep, Borean Tundra"};
@@ -87,7 +109,13 @@ constexpr Spot Landing(uint8_t era, bool horde)
 // Riding: apprentice in vanilla and TBC (epic riding was a level 60 goal there), journeyman in Wrath.
 inline constexpr uint32_t ApprenticeRiding = 33388;
 inline constexpr uint32_t JourneymanRiding = 33391;
+inline constexpr uint32_t ExpertRiding = 34090;
+inline constexpr uint32_t ColdWeatherFlying = 54197;
 constexpr bool EpicMount(uint8_t era) { return era >= ERA_WRATH; }
+
+// The level-cap boost also flies: expert riding, Cold Weather Flying and the faction's flying mount.
+constexpr bool Flying(uint8_t kind) { return kind == KIND_LEVEL_CAP; }
+constexpr uint32_t FlyingMountItem(bool horde) { return horde ? 25474 : 25472; }  // Tawny Wind Rider / Snowy Gryphon
 
 // The race's own vendor mount (normal or epic). 0 for unknown races.
 constexpr uint32_t MountItem(uint8_t race, bool epic)
@@ -108,8 +136,8 @@ constexpr uint32_t MountItem(uint8_t race, bool epic)
     }
 }
 
-// The era's bags: Runecloth Bag (vanilla, 14 slots) or Netherweave Bag (TBC, 16 slots).
-constexpr uint32_t BagItem(uint8_t tier) { return tier ? 21841 : 14046; }
+// The tier's bags: Runecloth Bag (vanilla, 14 slots), Netherweave Bag (TBC, 16) or Frostweave Bag (Wrath, 20).
+constexpr uint32_t BagItem(uint8_t tier) { return tier >= 2 ? 41599 : tier ? 21841 : 14046; }
 
 // Class tools the levelling quests would have given: shaman totems and rogue Thieves' Tools.
 inline constexpr std::array<uint32_t, 4> ShamanTotems = {5175, 5176, 5177, 5178};
