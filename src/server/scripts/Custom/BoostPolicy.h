@@ -48,6 +48,17 @@ constexpr uint8_t EraFor(uint8_t progressionStep, bool individualProgression, ui
     return era < account ? era : account;
 }
 
+// The era the server's phase opens: the account's expansion and, with individual progression, its
+// ProgressionLimit (0 for none). A boost always belongs to this era, whatever the character's own progression.
+constexpr uint8_t PhaseEra(bool individualProgression, uint8_t progressionLimit, uint8_t accountExpansion)
+{
+    return EraFor(progressionLimit ? progressionLimit : ProgressionSteps, individualProgression, accountExpansion);
+}
+
+// The first individual-progression step of an era. A boosted character behind it is moved up to it, so the
+// era's content is open to it.
+constexpr uint8_t EraStartStep(uint8_t era) { return era == ERA_WRATH ? WrathStep : era == ERA_TBC ? TbcStep : 0; }
+
 // Which boost: like retail, the start of the era's own content; in Wrath also straight to the level cap.
 enum Kind : uint8_t
 {
