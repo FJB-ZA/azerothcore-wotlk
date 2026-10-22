@@ -44,6 +44,7 @@ enum UnitHook
     UNITHOOK_ON_UNIT_EXIT_COMBAT,
     UNITHOOK_ON_UNIT_DEATH,
     UNITHOOK_ON_UNIT_SET_SHAPESHIFT_FORM,
+    UNITHOOK_ON_SPELL_BONUS_SCHOOL_MASK,
     UNITHOOK_END
 };
 
@@ -75,6 +76,14 @@ public:
 
     // Called when Heal is Recieved
     virtual void ModifyHealReceived(Unit* /*target*/, Unit* /*healer*/, uint32& /*heal*/, SpellInfo const* /*spellInfo*/) { }
+
+    /**
+     * @brief Called for the school mask the caster's own done-bonuses use for a spell: percentage damage auras by
+     *        school, spell power by school and spell crit by school. Resistances and immunities still use the
+     *        spell's own school. (solo-wow: sub-class mirrors count as the school of the spell they mirror.)
+     */
+    virtual void OnSpellBonusSchoolMask(Unit const* /*caster*/, SpellInfo const* /*spellInfo*/,
+                                        uint32& /*schoolMask*/) { }
 
     //Called when Damage is Dealt
     virtual uint32 DealDamage(Unit* /*AttackerUnit*/, Unit* /*pVictim*/, uint32 damage, DamageEffectType /*damagetype*/) { return damage; }

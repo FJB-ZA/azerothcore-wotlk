@@ -17,15 +17,22 @@
 #include <vector>
 
 #include "Chat.h"
+#include "Creature.h"
 #include "DatabaseEnv.h"
 #include "GameTime.h"
+#include "NPCPackets.h"
+#include "ObjectMgr.h"
+#include "Opcodes.h"
 #include "Pet.h"
 #include "Player.h"
 #include "ScriptMgr.h"
 #include "SpellInfo.h"
 #include "SpellMgr.h"
-#include "SubclassPolicy.h"
 #include "Subclass.h"
+#include "SubclassPolicy.h"
+#include "Trainer.h"
+#include "WorldPacket.h"
+#include "WorldSession.h"
 
 // Sub-class paths (rules in SubclassPolicy.h, data in data/sql/custom/db_world/solo_wow_subclass.sql).
 //
@@ -442,7 +449,8 @@ public:
     SubclassPlayerScript()
         : PlayerScript("SubclassPlayerScript",
                        {PLAYERHOOK_ON_LOGIN, PLAYERHOOK_ON_LOGOUT, PLAYERHOOK_ON_AFTER_SPEC_SLOT_CHANGED,
-                        PLAYERHOOK_ON_LEARN_SPELL, PLAYERHOOK_ON_DELETE_FROM_DB})
+                        PLAYERHOOK_ON_LEARN_SPELL, PLAYERHOOK_ON_DELETE_FROM_DB,
+                        PLAYERHOOK_ON_BEFORE_RECEIVE_SPELL_LIST_FROM_TRAINER, PLAYERHOOK_ON_GET_TRAINER_SPELL_STATE})
     {
     }
 
@@ -479,6 +487,67 @@ public:
                 }
     }
 
+    // On a path, the class trainer lists the path's ranks where the originals were, at the same level and price
+    void OnPlayerBeforeReceiveSpellListFromTrainer(Player* player, Creature* /*trainer*/,
+                                                   WorldPackets::NPC::TrainerList& list) override
+    {
+        if (!ActivePath(player))
+            return;
+        std::vector<uint32> listed;
+        auto entry = list.Spells.begin();
+        while (entry != list.Spells.end())
+        {
+            if (uint32 const mirror = Subclass_MirrorOf(player, uint32(entry->SpellID)))
+            {
+                // Several originals sharing one mirror (Fear's ranks for Entomb) show it once
+                if (Subclass::Contains(listed, mirror))
+                {
+                    entry = list.Spells.erase(entry);
+                    continue;
+                }
+                listed.push_back(mirror);
+                entry->SpellID = int32(mirror);
+            }
+            for (int32& ability : entry->ReqAbility)
+                if (uint32 const mirror = ability > 0 ? Subclass_MirrorOf(player, uint32(ability)) : 0)
+                    ability = int32(mirror);
+            ++entry;
+        }
+    }
+
+    // A swapped original's state on a path follows its mirror: known when the mirror is, otherwise its own level and
+    // the previous rank's mirror decide. Buying it (see SubclassServerScript) teaches the original, which becomes the
+    // mirror in the path's groups at once.
+    void OnPlayerGetTrainerSpellState(Player const* constPlayer, uint32 /*trainerId*/, uint32 spellId,
+                                      Trainer::SpellState& state) override
+    {
+        Player* player = const_cast<Player*>(constPlayer);
+        uint32 const mirror = Subclass_MirrorOf(player, spellId);
+        if (!mirror)
+            return;
+        if (player->HasSpell(mirror))
+        {
+            state = Trainer::SpellState::Known;
+            return;
+        }
+        SpellInfo const* info = sSpellMgr->GetSpellInfo(spellId);
+        if (!info || player->GetLevel() < info->SpellLevel)
+        {
+            state = Trainer::SpellState::Unavailable;
+            return;
+        }
+        if (uint32 const previous = sSpellMgr->GetPrevSpellInChain(spellId))
+        {
+            uint32 const previousMirror = Subclass_MirrorOf(player, previous);
+            if (!player->HasSpell(previousMirror ? previousMirror : previous))
+            {
+                state = Trainer::SpellState::Unavailable;
+                return;
+            }
+        }
+        state = Trainer::SpellState::Available;
+    }
+
     void OnPlayerDeleteFromDB(CharacterDatabaseTransaction trans, uint32 guid) override
     {
         trans->Append("DELETE FROM character_subclass_path WHERE guid = {}", guid);
@@ -492,9 +561,10 @@ class SubclassUnitScript : public UnitScript
 {
 public:
     SubclassUnitScript()
-        : UnitScript("SubclassUnitScript", true,
-                     {UNITHOOK_MODIFY_PERIODIC_DAMAGE_AURAS_TICK, UNITHOOK_MODIFY_MELEE_DAMAGE,
-                      UNITHOOK_MODIFY_SPELL_DAMAGE_TAKEN, UNITHOOK_MODIFY_HEAL_RECEIVED})
+        : UnitScript(
+              "SubclassUnitScript", true,
+              {UNITHOOK_MODIFY_PERIODIC_DAMAGE_AURAS_TICK, UNITHOOK_MODIFY_MELEE_DAMAGE,
+               UNITHOOK_MODIFY_SPELL_DAMAGE_TAKEN, UNITHOOK_MODIFY_HEAL_RECEIVED, UNITHOOK_ON_SPELL_BONUS_SCHOOL_MASK})
     {
     }
 
@@ -521,6 +591,59 @@ public:
     {
         if (anyModifier)
             heal = uint32(heal * Modifier(healer, target, true));
+    }
+
+    // A mirror's caster bonuses see the original's school: Destruction's fire talents and fire spell power count for a
+    // Necromancer's frost and disease mirrors. Resistances and immunities still see the mirror's own school.
+    void OnSpellBonusSchoolMask(Unit const* caster, SpellInfo const* spellInfo, uint32& schoolMask) override
+    {
+        if (!spellInfo || spellInfo->Id < Subclass::FirstPathSpell || spellInfo->Id > Subclass::LastCustomSpell)
+            return;
+        uint32 const original = Subclass_BonusSpell(caster, spellInfo->Id);
+        if (original == spellInfo->Id)
+            return;
+        if (SpellInfo const* originalInfo = sSpellMgr->GetSpellInfo(original))
+            schoolMask = originalInfo->GetSchoolMask();
+    }
+};
+
+// The trainer window on a path shows mirrors; buying one teaches its original rank (Trainer::TeachSpell, with all its
+// checks and price), which Normalize turns into the mirror in the path's groups.
+class SubclassServerScript : public ServerScript
+{
+public:
+    SubclassServerScript() : ServerScript("SubclassServerScript", {SERVERHOOK_CAN_PACKET_RECEIVE}) {}
+
+    bool CanPacketReceive(WorldSession* session, WorldPacket const& packet) override
+    {
+        if (packet.GetOpcode() != CMSG_TRAINER_BUY_SPELL || !session || !session->GetPlayer())
+            return true;
+        WorldPacket copy(packet);
+        ObjectGuid trainerGuid;
+        uint32 spellId = 0;
+        copy >> trainerGuid >> spellId;
+        if (spellId < Subclass::FirstPathSpell || spellId > Subclass::LastCustomSpell)
+            return true;
+
+        Player* player = session->GetPlayer();
+        uint8 const active = ActivePath(player);
+        uint32 original = 0;
+        for (auto const& [from, to] : Subclass_AllSwaps(active))
+            if (to == spellId)
+            {
+                original = from;
+                break;
+            }
+        if (!active || !original)
+            return true;
+
+        Creature* npc = player->GetNPCIfCanInteractWith(trainerGuid, UNIT_NPC_FLAG_TRAINER);
+        Trainer::Trainer* trainer = npc ? sObjectMgr->GetTrainer(npc->GetEntry()) : nullptr;
+        if (!trainer)
+            return false;
+        trainer->TeachSpell(npc, player, original);
+        trainer->SendSpells(npc, player, session->GetSessionDbLocaleIndex());
+        return false;
     }
 };
 
@@ -600,5 +723,6 @@ void AddSC_subclass()
     new SubclassWorldScript();
     new SubclassPlayerScript();
     new SubclassUnitScript();
+    new SubclassServerScript();
     new SubclassCommandScript();
 }

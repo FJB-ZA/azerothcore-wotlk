@@ -49,6 +49,12 @@ void ScriptMgr::ModifyHealReceived(Unit* target, Unit* healer, uint32& heal, Spe
     CALL_ENABLED_HOOKS(UnitScript, UNITHOOK_MODIFY_HEAL_RECEIVED, script->ModifyHealReceived(target, healer, heal, spellInfo));
 }
 
+void ScriptMgr::OnSpellBonusSchoolMask(Unit const* caster, SpellInfo const* spellInfo, uint32& schoolMask)
+{
+    CALL_ENABLED_HOOKS(UnitScript, UNITHOOK_ON_SPELL_BONUS_SCHOOL_MASK,
+        script->OnSpellBonusSchoolMask(caster, spellInfo, schoolMask));
+}
+
 uint32 ScriptMgr::DealDamage(Unit* AttackerUnit, Unit* pVictim, uint32 damage, DamageEffectType damagetype)
 {
     if (ScriptRegistry<UnitScript>::ScriptPointerList.empty())

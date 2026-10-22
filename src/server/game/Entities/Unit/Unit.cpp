@@ -8210,7 +8210,12 @@ float Unit::SpellPctDamageModsDone(Unit* victim, SpellInfo const* spellProto, Da
     // Done total percent damage auras
     float DoneTotalMod = 1.0f;
 
-    DoneTotalMod *= GetTotalAuraMultiplier(SPELL_AURA_MOD_DAMAGE_PERCENT_DONE, [spellProto, this, damagetype](AuraEffect const* aurEff)
+    // The school the caster's bonuses see (solo-wow: a sub-class mirror counts as its original's school)
+    uint32 bonusSchoolMask = spellProto->GetSchoolMask();
+    sScriptMgr->OnSpellBonusSchoolMask(this, spellProto, bonusSchoolMask);
+
+    DoneTotalMod *= GetTotalAuraMultiplier(SPELL_AURA_MOD_DAMAGE_PERCENT_DONE,
+        [spellProto, this, damagetype, bonusSchoolMask](AuraEffect const* aurEff)
     {
         // prevent apply mods from weapon specific case to non weapon specific spells (Example: thunder clap and two-handed weapon specialization)
         if (spellProto->EquippedItemClass == -1 && aurEff->GetSpellInfo()->EquippedItemClass != -1 &&
@@ -8222,7 +8227,7 @@ float Unit::SpellPctDamageModsDone(Unit* victim, SpellInfo const* spellProto, Da
         if (!spellProto->ValidateAttribute6SpellDamageMods(this, aurEff, damagetype == DOT))
             return false;
 
-        if (aurEff->GetMiscValue() & spellProto->GetSchoolMask())
+        if (aurEff->GetMiscValue() & bonusSchoolMask)
         {
             if (aurEff->GetSpellInfo()->EquippedItemClass == -1)
                 return true;
@@ -8623,8 +8628,10 @@ uint32 Unit::SpellDamageBonusDone(Unit* victim, SpellInfo const* spellProto, uin
             break;
     }
 
-    // Done fixed damage bonus auras
-    DoneAdvertisedBenefit += SpellBaseDamageBonusDone(spellProto->GetSchoolMask());
+    // Done fixed damage bonus auras (solo-wow: in the school the caster's bonuses see)
+    uint32 bonusSchoolMask = spellProto->GetSchoolMask();
+    sScriptMgr->OnSpellBonusSchoolMask(this, spellProto, bonusSchoolMask);
+    DoneAdvertisedBenefit += SpellBaseDamageBonusDone(SpellSchoolMask(bonusSchoolMask));
 
     // Check for table values
     float coeff = spellProto->Effects[effIndex].BonusMultiplier;
@@ -8879,6 +8886,11 @@ float Unit::SpellDoneCritChance(Unit const* /*victim*/, SpellInfo const* spellPr
     // Xinef: check if spell is capable of critting, auras requires special aura to crit so they can be skipped
     if (!skipEffectCheck && !spellProto->IsCritCapable())
         return 0.0f;
+
+    // The school the caster's crit sees (solo-wow: a sub-class mirror counts as its original's school)
+    uint32 bonusSchoolMask = schoolMask;
+    sScriptMgr->OnSpellBonusSchoolMask(this, spellProto, bonusSchoolMask);
+    schoolMask = SpellSchoolMask(bonusSchoolMask);
 
     float crit_chance = 0.0f;
     switch (spellProto->DmgClass)
