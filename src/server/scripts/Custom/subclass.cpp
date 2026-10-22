@@ -23,7 +23,9 @@
 #include "NPCPackets.h"
 #include "ObjectMgr.h"
 #include "Opcodes.h"
+#include "ObjectAccessor.h"
 #include "Pet.h"
+#include "TemporarySummon.h"
 #include "Player.h"
 #include "ScriptMgr.h"
 #include "SpellInfo.h"
@@ -44,6 +46,14 @@ namespace
 {
 using Subclass::Swap;
 
+struct CreatureSwap
+{
+    uint32 original = 0;
+    uint32 replacement = 0;
+    uint32 guardian = 0;    // a second body summoned next to the pet (the second Skeletal Archer), or 0
+    uint8 damagePct = 100;  // the pet's and its guardian's damage, in % of the original's
+};
+
 struct PathData
 {
     uint8 id = 0;
@@ -57,14 +67,26 @@ struct PathData
     float pvpDamage = 1.0f;
     float pvpHealing = 1.0f;
     std::vector<Swap> spells;
-    std::vector<std::pair<uint32, uint32>> creatures;  // original entry, replacement entry
+    std::vector<CreatureSwap> creatures;
 };
 
 using PathMap = std::map<uint8, PathData>;
 
 std::mutex pathsLock;
 std::shared_ptr<PathMap const> paths = std::make_shared<PathMap const>();
+// Path minions and their guardians by creature entry, for their damage share and the guardian summon
+std::shared_ptr<std::unordered_map<uint32, CreatureSwap> const> minions =
+    std::make_shared<std::unordered_map<uint32, CreatureSwap> const>();
 std::atomic<bool> anyModifier = false;
+std::atomic<bool> anyMinionModifier = false;
+
+// The guardian summoned next to each player's pet
+std::mutex guardiansLock;
+std::unordered_map<ObjectGuid::LowType, ObjectGuid> guardians;
+
+// Guardians take their summon properties (an allied guardian that fights beside its owner) from the death knight's
+// Raise Dead ghoul, rather than a hard-coded SummonProperties.dbc id
+constexpr uint32 GuardianPropertiesSpell = 46585;
 
 // Each online character's path per talent group, guarded: the hooks run on map threads
 std::mutex charactersLock;
@@ -129,15 +151,27 @@ void LoadPaths()
         } while (result->NextRow());
     }
 
-    if (QueryResult result =
-            WorldDatabase.Query("SELECT path_id, original_entry, replacement_entry FROM subclass_creature_swap"))
+    auto loadedMinions = std::make_shared<std::unordered_map<uint32, CreatureSwap>>();
+    bool minionModifier = false;
+    if (QueryResult result = WorldDatabase.Query("SELECT path_id, original_entry, replacement_entry, guardian_entry, "
+                                                 "damage_pct FROM subclass_creature_swap"))
     {
         do
         {
             Field* fields = result->Fetch();
             auto path = loaded->find(fields[0].Get<uint8>());
-            if (path != loaded->end())
-                path->second.creatures.emplace_back(fields[1].Get<uint32>(), fields[2].Get<uint32>());
+            if (path == loaded->end())
+                continue;
+            CreatureSwap swap;
+            swap.original = fields[1].Get<uint32>();
+            swap.replacement = fields[2].Get<uint32>();
+            swap.guardian = fields[3].Get<uint32>();
+            swap.damagePct = fields[4].Get<uint8>();
+            path->second.creatures.push_back(swap);
+            (*loadedMinions)[swap.replacement] = swap;
+            if (swap.guardian)
+                (*loadedMinions)[swap.guardian] = swap;
+            minionModifier = minionModifier || swap.damagePct != 100;
         } while (result->NextRow());
     }
 
@@ -152,7 +186,23 @@ void LoadPaths()
 
     std::lock_guard<std::mutex> guard(pathsLock);
     paths = loaded;
+    minions = loadedMinions;
     anyModifier = modifier;
+    anyMinionModifier = minionModifier;
+}
+
+std::shared_ptr<std::unordered_map<uint32, CreatureSwap> const> Minions()
+{
+    std::lock_guard<std::mutex> guard(pathsLock);
+    return minions;
+}
+
+// The swap a path minion or its guardian comes from, or nullptr. Cheap for every other creature: custom entries only.
+std::shared_ptr<std::unordered_map<uint32, CreatureSwap> const> MinionsIfCustom(uint32 entry)
+{
+    if (entry < Subclass::FirstPathSpell || entry > Subclass::LastCustomSpell)
+        return nullptr;
+    return Minions();
 }
 
 std::array<uint8, MAX_TALENT_SPECS> GroupsOf(Player* player)
@@ -270,8 +320,8 @@ void DismissForeignPet(Player* player)
     uint8 const active = ActivePath(player);
     std::shared_ptr<PathMap const> const all = Paths();
     for (auto const& [id, path] : *all)
-        for (auto const& [original, replacement] : path.creatures)
-            if ((id == active && entry == original) || (id != active && entry == replacement))
+        for (CreatureSwap const& swap : path.creatures)
+            if ((id == active && entry == swap.original) || (id != active && entry == swap.replacement))
             {
                 player->RemovePet(pet, PET_SAVE_NOT_IN_SLOT);
                 return;
@@ -297,8 +347,67 @@ void LoadCharacter(Player* player)
     characters[player->GetGUID().GetCounter()] = groups;
 }
 
+// A path minion's (and its guardian's) share of the original pet's damage
+float MinionModifier(Unit* source)
+{
+    if (!anyMinionModifier || !source || !source->IsCreature())
+        return 1.0f;
+    auto const all = MinionsIfCustom(source->GetEntry());
+    if (!all)
+        return 1.0f;
+    auto found = all->find(source->GetEntry());
+    return found != all->end() ? found->second.damagePct / 100.0f : 1.0f;
+}
+
+void SummonGuardian(Pet* pet)
+{
+    auto const all = MinionsIfCustom(pet->GetEntry());
+    if (!all)
+        return;
+    auto found = all->find(pet->GetEntry());
+    if (found == all->end() || !found->second.guardian || found->second.replacement != pet->GetEntry())
+        return;
+    Player* owner = pet->GetOwner();
+    SpellInfo const* raiseDead = sSpellMgr->GetSpellInfo(GuardianPropertiesSpell);
+    SummonPropertiesEntry const* properties =
+        raiseDead ? sSummonPropertiesStore.LookupEntry(raiseDead->Effects[EFFECT_0].MiscValueB) : nullptr;
+    if (!owner || !properties || properties->Category != SUMMON_CATEGORY_ALLY)
+    {
+        LOG_ERROR("scripts", "subclass: no guardian summon properties from spell {}; {} comes without its guardian.",
+                  GuardianPropertiesSpell, pet->GetEntry());
+        return;
+    }
+    Position const position = pet->GetNearPosition(2.0f, float(M_PI) / 2);
+    if (TempSummon* guardian =
+            owner->SummonCreature(found->second.guardian, position, TEMPSUMMON_MANUAL_DESPAWN, 0, 0, properties))
+    {
+        std::lock_guard<std::mutex> guard(guardiansLock);
+        guardians[owner->GetGUID().GetCounter()] = guardian->GetGUID();
+    }
+}
+
+// When the pet goes (dismissed, dead or out of the world), its guardian goes with it
+void DismissGuardian(Creature* pet)
+{
+    if (!pet->IsPet() || !MinionsIfCustom(pet->GetEntry()))
+        return;
+    ObjectGuid guardianGuid;
+    {
+        std::lock_guard<std::mutex> guard(guardiansLock);
+        auto found = guardians.find(pet->GetOwnerGUID().GetCounter());
+        if (found == guardians.end())
+            return;
+        guardianGuid = found->second;
+        guardians.erase(found);
+    }
+    if (Creature* guardian = ObjectAccessor::GetCreature(*pet, guardianGuid))
+        guardian->DespawnOrUnsummon(1ms);
+}
+
 float Modifier(Unit* source, Unit* target, bool healing)
 {
+    if (!anyModifier)
+        return 1.0f;
     Player* player = source ? source->GetCharmerOrOwnerPlayerOrPlayerItself() : nullptr;
     if (!player)
         return 1.0f;
@@ -561,36 +670,42 @@ class SubclassUnitScript : public UnitScript
 {
 public:
     SubclassUnitScript()
-        : UnitScript(
-              "SubclassUnitScript", true,
-              {UNITHOOK_MODIFY_PERIODIC_DAMAGE_AURAS_TICK, UNITHOOK_MODIFY_MELEE_DAMAGE,
-               UNITHOOK_MODIFY_SPELL_DAMAGE_TAKEN, UNITHOOK_MODIFY_HEAL_RECEIVED, UNITHOOK_ON_SPELL_BONUS_SCHOOL_MASK})
+        : UnitScript("SubclassUnitScript", true,
+                     {UNITHOOK_MODIFY_PERIODIC_DAMAGE_AURAS_TICK, UNITHOOK_MODIFY_MELEE_DAMAGE,
+                      UNITHOOK_MODIFY_SPELL_DAMAGE_TAKEN, UNITHOOK_MODIFY_HEAL_RECEIVED,
+                      UNITHOOK_ON_SPELL_BONUS_SCHOOL_MASK, UNITHOOK_ON_UNIT_DEATH})
     {
     }
 
     void ModifyPeriodicDamageAurasTick(Unit* target, Unit* attacker, uint32& damage,
                                        SpellInfo const* /*spellInfo*/) override
     {
-        if (anyModifier)
-            damage = uint32(damage * Modifier(attacker, target, false));
+        if (anyModifier || anyMinionModifier)
+            damage = uint32(damage * Modifier(attacker, target, false) * MinionModifier(attacker));
     }
 
     void ModifyMeleeDamage(Unit* target, Unit* attacker, uint32& damage) override
     {
-        if (anyModifier)
-            damage = uint32(damage * Modifier(attacker, target, false));
+        if (anyModifier || anyMinionModifier)
+            damage = uint32(damage * Modifier(attacker, target, false) * MinionModifier(attacker));
     }
 
     void ModifySpellDamageTaken(Unit* target, Unit* attacker, int32& damage, SpellInfo const* /*spellInfo*/) override
     {
-        if (anyModifier)
-            damage = int32(damage * Modifier(attacker, target, false));
+        if (anyModifier || anyMinionModifier)
+            damage = int32(damage * Modifier(attacker, target, false) * MinionModifier(attacker));
     }
 
     void ModifyHealReceived(Unit* target, Unit* healer, uint32& heal, SpellInfo const* /*spellInfo*/) override
     {
         if (anyModifier)
             heal = uint32(heal * Modifier(healer, target, true));
+    }
+
+    void OnUnitDeath(Unit* unit, Unit* /*killer*/) override
+    {
+        if (Creature* creature = unit->ToCreature())
+            DismissGuardian(creature);
     }
 
     // A mirror's caster bonuses see the original's school: Destruction's fire talents and fire spell power count for a
@@ -645,6 +760,23 @@ public:
         trainer->SendSpells(npc, player, session->GetSessionDbLocaleIndex());
         return false;
     }
+};
+
+// The second body of a path pet (the Necromancer's second Skeletal Archer) comes and goes with the pet
+class SubclassPetScript : public PetScript
+{
+public:
+    SubclassPetScript() : PetScript("SubclassPetScript", {PETHOOK_ON_PET_ADD_TO_WORLD}) {}
+
+    void OnPetAddToWorld(Pet* pet) override { SummonGuardian(pet); }
+};
+
+class SubclassCreatureScript : public AllCreatureScript
+{
+public:
+    SubclassCreatureScript() : AllCreatureScript("SubclassCreatureScript") {}
+
+    void OnCreatureRemoveWorld(Creature* creature) override { DismissGuardian(creature); }
 };
 
 // GM commands. Players change paths at the path's trainer NPC.
@@ -724,5 +856,7 @@ void AddSC_subclass()
     new SubclassPlayerScript();
     new SubclassUnitScript();
     new SubclassServerScript();
+    new SubclassPetScript();
+    new SubclassCreatureScript();
     new SubclassCommandScript();
 }

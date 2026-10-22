@@ -27,6 +27,8 @@ CREATE TABLE IF NOT EXISTS `subclass_creature_swap` (
   `path_id` TINYINT UNSIGNED NOT NULL,
   `original_entry` INT UNSIGNED NOT NULL,
   `replacement_entry` INT UNSIGNED NOT NULL,
+  `guardian_entry` INT UNSIGNED NOT NULL DEFAULT 0 COMMENT 'a second body summoned next to the pet, 0 for none',
+  `damage_pct` TINYINT UNSIGNED NOT NULL DEFAULT 100 COMMENT 'damage of the pet and its guardian, in % of the original',
   PRIMARY KEY (`path_id`, `original_entry`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
@@ -63,12 +65,13 @@ INSERT INTO `subclass_spell_swap` (`path_id`, `original_spell`, `replacement_spe
 (1, 688, 990150), (1, 697, 990151), (1, 712, 990152), (1, 691, 990153), (1, 30146, 990154);
 
 DELETE FROM `subclass_creature_swap` WHERE `path_id` = 1;
-INSERT INTO `subclass_creature_swap` (`path_id`, `original_entry`, `replacement_entry`) VALUES
-(1, 416, 990150),    -- Imp -> Skeletal Archer
-(1, 1860, 990151),   -- Voidwalker -> Flesh Golem
-(1, 1863, 990152),   -- Succubus -> Ghoul
-(1, 417, 990153),    -- Felhunter -> Banshee
-(1, 17252, 990154);  -- Felguard -> Abomination
+INSERT INTO `subclass_creature_swap`
+  (`path_id`, `original_entry`, `replacement_entry`, `guardian_entry`, `damage_pct`) VALUES
+(1, 416, 990150, 990157, 50),  -- Imp -> two Skeletal Archers, each with half the Imp's health and damage
+(1, 1860, 990151, 0, 100),   -- Voidwalker -> Flesh Golem
+(1, 1863, 990152, 0, 100),   -- Succubus -> Ghoul
+(1, 417, 990153, 0, 100),    -- Felhunter -> Banshee
+(1, 17252, 990154, 0, 100);  -- Felguard -> Abomination
 
 -- Mirrors behave like their originals: copy every per-spell table row from each original to its mirror. A negative
 -- id (all ranks of a chain) maps to the negative mirror. Fear's ranks share Entomb, which is not a mirror, so
