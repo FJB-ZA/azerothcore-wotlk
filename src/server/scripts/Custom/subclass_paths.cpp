@@ -9,13 +9,16 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
+#include "AccountMgr.h"
 #include "Chat.h"
 #include "CommandScript.h"
+#include "Config.h"
 #include "DBCStores.h"
 #include "DatabaseEnv.h"
 #include "GameTime.h"
@@ -28,6 +31,7 @@
 #include "SpellInfo.h"
 #include "SpellMgr.h"
 #include "SubclassPaths.h"
+#include "WorldPacket.h"
 #include "WorldSession.h"
 
 using namespace Acore::ChatCommands;
@@ -42,6 +46,7 @@ std::unordered_map<uint16, Path> paths;
 std::unordered_set<uint32> swappedOriginals;
 std::unordered_map<uint32, SubclassPaths::CreatureSwap> creatureSwaps;  // by replacement entry
 std::unordered_set<uint32> bonusSchoolSpells;
+std::unordered_map<uint32, uint16> treeOwners;  // a path's own talent tree (TalentTab id) to the path
 bool affectsCombat = false;
 
 // A character's path per talent group and its path change fee, loaded at login.
@@ -51,6 +56,7 @@ struct CharacterPaths : DataMap::Base
     uint32 lastFee = 0;
     uint32 lastChange = 0;
     bool loaded = false;
+    bool randomBot = false;
     bool dirty = false;  // reconcile on the next update, once whatever learned a spell has sent its own packets
     uint32 sinceSweep = 0;
 };
@@ -71,6 +77,31 @@ std::string PathName(uint16 id)
 {
     Path const* path = FindPath(id);
     return path ? path->name : "the plain class";
+}
+
+uint16 TreeOwner(uint32 talentTabId)
+{
+    auto const itr = treeOwners.find(talentTabId);
+    return itr != treeOwners.end() ? itr->second : SubclassPaths::PlainClass;
+}
+
+// Bot sessions have no client socket, and the core names them "headless".
+bool IsBot(Player* player) { return player->GetSession()->GetRemoteAddress() == "headless"; }
+
+// Talent points a talent group has spent in one tree
+uint32 PointsIn(Player* player, uint32 talentTabId, uint8 group)
+{
+    uint32 points = 0;
+    for (auto const& [spellId, talent] : player->GetTalentMap())
+    {
+        if (talent->State == PLAYERSPELL_REMOVED || !talent->IsInSpec(group))
+            continue;
+        TalentSpellPos const* pos = GetTalentSpellPos(spellId);
+        TalentEntry const* entry = pos ? sTalentStore.LookupEntry(pos->talent_id) : nullptr;
+        if (entry && entry->TalentTab == talentTabId)
+            points += pos->rank + 1;
+    }
+    return points;
 }
 
 bool HasInSlot(Player* player, uint32 spellId, uint8 group)
@@ -157,6 +188,36 @@ void Reconcile(Player* player)
             apply(path, false);
     if (Path const* path = FindPath(current))
         apply(*path, true);
+
+    for (auto const& [tab, owner] : treeOwners)
+    {
+        if (SubclassPaths::TreeOpen(owner, current))
+            continue;
+        if (uint32 const refunded = player->ResetTalentTab(tab); refunded && !IsBot(player))
+            ChatHandler(player->GetSession()).PSendSysMessage(
+                "This spec slot no longer walks the {} path, so its {} points in that tree are yours to spend again.",
+                PathName(owner), refunded);
+    }
+}
+
+// Tells the SubclassPaths addon (SpecSlots) which path and tree each owned slot has.
+void SendSlotPaths(Player* player)
+{
+    if (IsBot(player))
+        return;
+    CharacterPaths* data = PathsOf(player);
+    for (uint8 group = 0; group < player->GetSpecsCount() && group < MAX_TALENT_SPECS; ++group)
+    {
+        Path const* path = FindPath(data->group[group]);
+        TalentTabEntry const* tab = path && path->talentTab ? sTalentTabStore.LookupEntry(path->talentTab) : nullptr;
+        std::string const line = SubclassPaths::FormatSlotPath(
+            group + 1, path ? path->id : SubclassPaths::PlainClass, tab ? uint8(tab->tabpage + 1) : 0,
+            tab ? PointsIn(player, tab->TalentTabID, group) : 0, path ? path->name : std::string());
+        WorldPacket packet;
+        ChatHandler::BuildChatPacket(packet, CHAT_MSG_WHISPER, LANG_ADDON, player, player,
+                                     std::string(SubclassPaths::AddonPrefix) + '\t' + line);
+        player->SendDirectMessage(&packet);
+    }
 }
 
 void Load(Player* player)
@@ -178,6 +239,15 @@ void Load(Player* player)
         Field* fields = result->Fetch();
         data->lastFee = fields[0].Get<uint32>();
         data->lastChange = fields[1].Get<uint32>();
+    }
+    // Only random bots pick their own path; a player's own characters played as bots keep what the player chose.
+    std::string account;
+    if (IsBot(player) && AccountMgr::GetName(player->GetSession()->GetAccountId(), account))
+    {
+        std::string prefix = sConfigMgr->GetOption<std::string>("Playerbots.RandomBotAccountPrefix", "rndbot", false);
+        data->randomBot = account.size() >= prefix.size() &&
+                          std::equal(prefix.begin(), prefix.end(), account.begin(),
+                                     [](char a, char b) { return std::tolower(uint8(a)) == std::tolower(uint8(b)); });
     }
     data->loaded = true;
 }
@@ -261,14 +331,59 @@ std::string ChangePath(Player* player, uint16 wanted, bool free)
     CharacterDatabase.DirectCommitTransaction(trans);
     // A crash before this save is undone at login, where the path table wins.
     player->SaveToDB(false, false);
+    SendSlotPaths(player);
     return {};
+}
+
+// A path's own tree must be one of its class's talent tabs, on a page the core and client know, and no other path's.
+void LoadTree(Path& path, uint32 talentTabId)
+{
+    path.talentTab = 0;
+    if (!talentTabId)
+        return;
+    TalentTabEntry const* tab = sTalentTabStore.LookupEntry(talentTabId);
+    if (!tab || !path.rules.classId || !(tab->ClassMask & (1u << (path.rules.classId - 1))) ||
+        tab->tabpage >= MAX_TALENT_TABS)
+    {
+        LOG_ERROR("sql.sql", "subclass_path: path {} owns talent tab {}, not a talent page of class {}; ignored.", path.id,
+                  talentTabId, path.rules.classId);
+        return;
+    }
+    if (auto const [itr, added] = treeOwners.emplace(talentTabId, path.id); !added)
+    {
+        LOG_ERROR("sql.sql", "subclass_path: path {} owns talent tab {}, which path {} already owns; ignored.", path.id,
+                  talentTabId, itr->second);
+        return;
+    }
+    path.talentTab = talentTabId;
+}
+
+// A random bot's first slot takes the first path its bot share picks, then drops its talents so the AI respecs.
+void PickBotPath(Player* player)
+{
+    CharacterPaths* data = PathsOf(player);
+    if (!data->randomBot || player->GetActiveSpec() != 0 || data->group[0] != SubclassPaths::PlainClass ||
+        player->IsInCombat())
+        return;
+    for (Path const* path : SubclassPaths::ClassPaths(player->getClass()))
+    {
+        if (!SubclassPaths::BotTakesPath(player->GetGUID().GetCounter(), path->id, path->botShare))
+            continue;
+        if (SubclassPaths::CanChangePath(SubclassPaths::PlainClass, path->id, path->rules, player->getClass(),
+                                         player->GetLevel(), player->GetSession()->Expansion(), true, false,
+                                         player->InArena(), 0, 0) != SubclassPaths::ChangeCheck::Ok)
+            continue;
+        if (ChangePath(player, path->id, true).empty())
+            player->resetTalents(true);
+        return;
+    }
 }
 
 void LoadPathRows()
 {
     QueryResult result = WorldDatabase.Query(
-        "SELECT id, name, class, unlock_level, era, damage_pve, damage_pvp, healing_pve, healing_pvp, unlock_quest "
-        "FROM subclass_path");
+        "SELECT id, name, class, unlock_level, era, damage_pve, damage_pvp, healing_pve, healing_pvp, unlock_quest, "
+        "talent_tab, bot_share FROM subclass_path");
     if (!result)
         return;
     do
@@ -288,6 +403,8 @@ void LoadPathRows()
         path.unlockQuest = fields[9].Get<uint32>();
         if (path.unlockQuest && !sObjectMgr->GetQuestTemplate(path.unlockQuest))
             LOG_ERROR("sql.sql", "subclass_path: path {} unlocks with quest {}, which doesn't exist.", id, path.unlockQuest);
+        LoadTree(path, fields[10].Get<uint32>());
+        path.botShare = std::clamp(fields[11].Get<float>(), 0.0f, 1.0f);
         affectsCombat |= !path.modifiers.Neutral();
     } while (result->NextRow());
 }
@@ -380,6 +497,7 @@ void LoadPaths()
     swappedOriginals.clear();
     creatureSwaps.clear();
     bonusSchoolSpells.clear();
+    treeOwners.clear();
     affectsCombat = false;
 
     LoadPathRows();
@@ -460,7 +578,7 @@ public:
         : PlayerScript("SubclassPathsPlayerScript",
                        {PLAYERHOOK_ON_LOGIN, PLAYERHOOK_ON_LEARN_SPELL, PLAYERHOOK_ON_AFTER_TRAIN_SPELL,
                         PLAYERHOOK_ON_LEVEL_CHANGED, PLAYERHOOK_ON_AFTER_SPEC_SLOT_CHANGED, PLAYERHOOK_ON_UPDATE,
-                        PLAYERHOOK_ON_DELETE})
+                        PLAYERHOOK_ON_DELETE, PLAYERHOOK_CAN_LEARN_TALENT, PLAYERHOOK_CAN_PLAYER_USE_PRIVATE_CHAT})
     {
     }
 
@@ -468,6 +586,24 @@ public:
     {
         Load(player);
         Reconcile(player);
+        SendSlotPaths(player);
+    }
+
+    // A path's own tree takes points only while the active slot follows that path.
+    bool OnPlayerCanLearnTalent(Player* player, TalentEntry const* talent, uint32 /*rank*/) override
+    {
+        return SubclassPaths::TreeOpen(TreeOwner(talent->TalentTab), SubclassPaths::ActivePathId(player));
+    }
+
+    // The addon asks with a whisper to the player themself: "SoloWowPath\tQ".
+    bool OnPlayerCanUseChat(Player* player, uint32 type, uint32 language, std::string& msg, Player* receiver) override
+    {
+        std::string const prefix = std::string(SubclassPaths::AddonPrefix) + '\t';
+        if (language != LANG_ADDON || type != CHAT_MSG_WHISPER || receiver != player || msg.rfind(prefix, 0) != 0)
+            return true;
+        if (SubclassPaths::IsQuery(std::string_view(msg).substr(prefix.size())))
+            SendSlotPaths(player);
+        return false;
     }
 
     // A trainer teaches originals to every slot; on a path the active slot takes the replacement instead. The hook
@@ -487,7 +623,11 @@ public:
 
     void OnPlayerLevelChanged(Player* player, uint8 /*oldLevel*/) override { MarkDirty(player); }
 
-    void OnPlayerAfterSpecSlotChanged(Player* player, uint8 /*newSlot*/) override { Reconcile(player); }
+    void OnPlayerAfterSpecSlotChanged(Player* player, uint8 /*newSlot*/) override
+    {
+        Reconcile(player);
+        SendSlotPaths(player);
+    }
 
     void OnPlayerUpdate(Player* player, uint32 diff) override
     {
@@ -502,6 +642,7 @@ public:
         data->dirty = false;
         data->sinceSweep = 0;
         Reconcile(player);
+        PickBotPath(player);
     }
 
     void OnPlayerDelete(ObjectGuid guid, uint32 /*accountId*/) override
@@ -556,8 +697,9 @@ public:
     static bool HandleList(ChatHandler* handler)
     {
         for (auto const& [id, path] : paths)
-            handler->PSendSysMessage("{}: {} (class {}, level {}, era {}, {} spell swaps)", id, path.name,
-                                     path.rules.classId, path.rules.unlockLevel, path.rules.era, path.swaps.size());
+            handler->PSendSysMessage("{}: {} (class {}, level {}, era {}, {} spell swaps, talent tab {})", id,
+                                     path.name, path.rules.classId, path.rules.unlockLevel, path.rules.era,
+                                     path.swaps.size(), path.talentTab);
         return true;
     }
 
@@ -566,7 +708,10 @@ public:
     {
         LoadPaths();
         for (auto const& [guid, player] : ObjectAccessor::GetPlayers())
+        {
             MarkDirty(player);
+            SendSlotPaths(player);
+        }
         handler->PSendSysMessage("Loaded {} sub-class paths.", paths.size());
         return true;
     }

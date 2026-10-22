@@ -20,7 +20,7 @@ class Player;
 class Unit;
 
 // Sub-class path data shared by the subclass_*.cpp scripts. Loaded by subclass_paths.cpp from the world tables
-// subclass_path, subclass_spell_swap and subclass_creature_swap.
+// subclass_path, subclass_spell_swap and subclass_creature_swap; a path's talent tree comes from talenttab_dbc.
 namespace SubclassPaths
 {
 struct SpellSwap
@@ -36,6 +36,8 @@ struct Path
     std::string name;
     PathRules rules;
     uint32 unlockQuest = 0;  // rewarded quest a character needs before choosing the path, 0 for none
+    uint32 talentTab = 0;    // the path's own talent tree (TalentTab.dbc), open only on the path; 0 for none
+    float botShare = 0.0f;   // share of the class's random bots that take the path once they meet its rules
     Modifiers modifiers;
     std::vector<SpellSwap> swaps;  // highest rank first, because removing a rank also removes the ranks above it
 };
