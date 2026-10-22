@@ -8720,7 +8720,7 @@ void Spell::DoAllEffectOnLaunchTarget(TargetInfo& targetInfo, float* multiplier)
 
     if (caster)
     {
-        float critChance = caster->SpellDoneCritChance(unit, m_spellInfo, m_spellSchoolMask, m_attackType, false);
+        float critChance = caster->SpellDoneCritChance(unit, m_spellInfo, m_spellInfo->GetCritSchoolMask(m_spellSchoolMask), m_attackType, false);
         critChance = unit->SpellTakenCritChance(caster, m_spellInfo, m_spellSchoolMask, critChance, m_attackType, false);
         targetInfo.crit = roll_chance_f(std::max(0.0f, critChance));
     }

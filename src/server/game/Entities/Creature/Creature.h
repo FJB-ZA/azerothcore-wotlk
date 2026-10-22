@@ -388,6 +388,10 @@ public:
     [[nodiscard]] uint32 GetOriginalEntry() const { return m_originalEntry; }
     void SetOriginalEntry(uint32 entry) { m_originalEntry = entry; }
 
+    /// solo-wow: the entry whose pet level stats and scaling this creature uses (a sub-class pet uses its original's).
+    [[nodiscard]] uint32 GetStatEntry() const { return _statEntry ? _statEntry : GetEntry(); }
+    void SetStatEntry(uint32 entry) { _statEntry = entry; }
+
     static float _GetDamageMod(int32 Rank);
 
     float m_SightDistance, m_CombatDistance;
@@ -503,6 +507,7 @@ protected:
 
     SpellSchoolMask m_meleeDamageSchoolMask;
     uint32 m_originalEntry;
+    uint32 _statEntry = 0;
     int32 _creatureImmunitiesId;
     uint32 _gossipMenuId;
 
