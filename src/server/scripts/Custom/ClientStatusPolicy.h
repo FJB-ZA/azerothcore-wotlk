@@ -62,8 +62,8 @@ constexpr bool ChangesStatus(std::string_view command)
     std::string_view const name = command.substr(0, end);
     if (name.size() != 2)
         return false;
-    char const first = name[0] | 0x20;
-    char const second = name[1] | 0x20;
+    char const first = static_cast<char>(name[0] | 0x20);
+    char const second = static_cast<char>(name[1] | 0x20);
     return (first == 'x' || first == 'i') && second == 'p';
 }
 }
