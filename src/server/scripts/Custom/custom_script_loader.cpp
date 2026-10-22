@@ -20,6 +20,11 @@
 void AddSC_mentor_mode();
 void AddSC_spec_slots();
 void AddSC_boost();
+void AddSC_subclass_paths();
+void AddSC_subclass_trainer();
+void AddSC_subclass_combat();
+void AddSC_subclass_minions();
+void AddSC_subclass_npc();
 
 // The name of this function should match:
 // void Add${NameOfDirectory}Scripts()
@@ -29,4 +34,9 @@ void AddCustomScripts()
     AddSC_mentor_mode();
     AddSC_spec_slots();
     AddSC_boost();
+    AddSC_subclass_paths();
+    AddSC_subclass_trainer();
+    AddSC_subclass_combat();
+    AddSC_subclass_minions();
+    AddSC_subclass_npc();
 }
