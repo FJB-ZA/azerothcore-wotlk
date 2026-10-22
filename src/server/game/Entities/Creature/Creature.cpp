@@ -1023,7 +1023,9 @@ void Creature::Regenerate(Powers power)
                 // Combat and any controlled creature
                 if (IsInCombat() || GetCharmerOrOwnerGUID())
                 {
-                    if (GetEntry() == NPC_IMP || GetEntry() == NPC_WATER_ELEMENTAL_TEMP || GetEntry() == NPC_WATER_ELEMENTAL_PERM)
+                    uint32 const petRulesEntry = GetPetRulesEntry(GetEntry());
+                    if (petRulesEntry == NPC_IMP || petRulesEntry == NPC_WATER_ELEMENTAL_TEMP ||
+                        petRulesEntry == NPC_WATER_ELEMENTAL_PERM)
                     {
                         addvalue = uint32((GetStat(STAT_SPIRIT) / (IsUnderLastManaUseEffect() ? 8.0f : 5.0f) + 17.0f));
                     }

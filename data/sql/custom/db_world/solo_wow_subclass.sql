@@ -62,7 +62,9 @@ INSERT INTO `subclass_spell_swap` (`path_id`, `original_spell`, `replacement_spe
 -- Fear (3 ranks) -> Entomb (one rank)
 (1, 5782, 990144), (1, 6213, 990144), (1, 6215, 990144),
 -- Summons: Imp, Voidwalker, Succubus, Felhunter, Felguard (TBC talent)
-(1, 688, 990150), (1, 697, 990151), (1, 712, 990152), (1, 691, 990153), (1, 30146, 990154);
+(1, 688, 990150), (1, 697, 990151), (1, 712, 990152), (1, 691, 990153), (1, 30146, 990154),
+-- Inferno -> Bone Colossus and its impact, Ritual of Doom -> Ritual of the Lich and the summon its portal casts
+(1, 1122, 990172), (1, 22703, 990173), (1, 18540, 990174), (1, 18541, 990175);
 
 DELETE FROM `subclass_creature_swap` WHERE `path_id` = 1;
 INSERT INTO `subclass_creature_swap`
@@ -71,7 +73,9 @@ INSERT INTO `subclass_creature_swap`
 (1, 1860, 990151, 0, 100),   -- Voidwalker -> Flesh Golem
 (1, 1863, 990152, 0, 100),   -- Succubus -> Ghoul
 (1, 417, 990153, 0, 100),    -- Felhunter -> Banshee
-(1, 17252, 990154, 0, 100);  -- Felguard -> Abomination
+(1, 17252, 990154, 0, 100),  -- Felguard -> Abomination
+(1, 89, 990155, 0, 100),     -- Infernal -> Bone Colossus
+(1, 11859, 990156, 0, 100);  -- Doomguard -> Lich Lieutenant
 
 -- Mirrors behave like their originals: copy every per-spell table row from each original to its mirror. A negative
 -- id (all ranks of a chain) maps to the negative mirror. Fear's ranks share Entomb, which is not a mirror, so

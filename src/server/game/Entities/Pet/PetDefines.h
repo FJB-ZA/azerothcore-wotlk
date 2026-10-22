@@ -22,6 +22,7 @@
 #include "Optional.h"
 #include <array>
 #include <string>
+#include <unordered_map>
 #include <vector>
 #include <numbers>
 
@@ -242,5 +243,10 @@ public:
         return UnslottedPets.size() == 1 && UnslottedPets[0].Type == HUNTER_PET ? &UnslottedPets[0] : nullptr;
     }
 };
+
+// solo-wow: an entry that follows another entry's pet rules below and in Guardian (stats, scaling auras,
+// regeneration), so a sub-class minion behaves exactly as the demon it replaces. Scripts set the table.
+AC_GAME_API uint32 GetPetRulesEntry(uint32 entry);
+AC_GAME_API void SetPetRulesEntries(std::unordered_map<uint32, uint32> entries);
 
 #endif

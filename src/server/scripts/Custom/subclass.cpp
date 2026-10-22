@@ -21,6 +21,7 @@
 #include "ScriptedGossip.h"
 #include "DatabaseEnv.h"
 #include "GameTime.h"
+#include "Group.h"
 #include "NPCPackets.h"
 #include "ObjectMgr.h"
 #include "Opcodes.h"
@@ -63,6 +64,7 @@ struct PathData
     uint8 unlockLevel = 0;
     uint8 unlockExpansion = 0;
     uint8 botSharePct = 0;
+    uint32 unlockQuest = 0;  // trainers teach the path after it; its reward puts the active slot on the path
     float pveDamage = 1.0f;
     float pveHealing = 1.0f;
     float pvpDamage = 1.0f;
@@ -91,6 +93,9 @@ std::unordered_map<ObjectGuid::LowType, ObjectGuid> guardians;
 // Guardians take their summon properties (an allied guardian that fights beside its owner) from the death knight's
 // Raise Dead ghoul, rather than a hard-coded SummonProperties.dbc id
 constexpr uint32 GuardianPropertiesSpell = 46585;
+// The Necromancer's "The Last Breath": every kill worth experience counts (solo_wow_subclass_quests.sql)
+constexpr uint32 LastBreathQuest = 990171;
+constexpr uint32 LastBreathCredit = 990175;
 
 // Each online character's path per talent group, guarded: the hooks run on map threads
 std::mutex charactersLock;
@@ -156,6 +161,7 @@ void LoadPaths()
     }
 
     auto loadedMinions = std::make_shared<std::unordered_map<uint32, CreatureSwap>>();
+    std::unordered_map<uint32, uint32> petRules;  // each minion follows its demon's per-entry pet rules
     bool minionModifier = false;
     if (QueryResult result = WorldDatabase.Query("SELECT path_id, original_entry, replacement_entry, guardian_entry, "
                                                  "damage_pct FROM subclass_creature_swap"))
@@ -173,9 +179,24 @@ void LoadPaths()
             swap.damagePct = fields[4].Get<uint8>();
             path->second.creatures.push_back(swap);
             (*loadedMinions)[swap.replacement] = swap;
+            petRules[swap.replacement] = swap.original;
             if (swap.guardian)
+            {
                 (*loadedMinions)[swap.guardian] = swap;
+                petRules[swap.guardian] = swap.original;
+            }
             minionModifier = minionModifier || swap.damagePct != 100;
+        } while (result->NextRow());
+    }
+
+    if (QueryResult result = WorldDatabase.Query("SELECT path_id, quest FROM subclass_path_unlock"))
+    {
+        do
+        {
+            Field* fields = result->Fetch();
+            auto path = loaded->find(fields[0].Get<uint8>());
+            if (path != loaded->end())
+                path->second.unlockQuest = fields[1].Get<uint32>();
         } while (result->NextRow());
     }
 
@@ -198,6 +219,7 @@ void LoadPaths()
                  path.spells.size(), path.creatures.size());
     }
 
+    SetPetRulesEntries(std::move(petRules));
     std::lock_guard<std::mutex> guard(pathsLock);
     paths = loaded;
     minions = loadedMinions;
@@ -582,8 +604,29 @@ public:
         : PlayerScript("SubclassPlayerScript",
                        {PLAYERHOOK_ON_LOGIN, PLAYERHOOK_ON_LOGOUT, PLAYERHOOK_ON_AFTER_SPEC_SLOT_CHANGED,
                         PLAYERHOOK_ON_LEARN_SPELL, PLAYERHOOK_ON_DELETE_FROM_DB,
-                        PLAYERHOOK_ON_BEFORE_RECEIVE_SPELL_LIST_FROM_TRAINER, PLAYERHOOK_ON_GET_TRAINER_SPELL_STATE})
+                        PLAYERHOOK_ON_BEFORE_RECEIVE_SPELL_LIST_FROM_TRAINER, PLAYERHOOK_ON_GET_TRAINER_SPELL_STATE,
+                        PLAYERHOOK_ON_CREATURE_KILL_CREDIT})
     {
+    }
+
+    // Everyone in the group near the kill hears it, as with any kill quest
+    void OnPlayerCreatureKillCredit(Player* player, Creature* killed) override
+    {
+        auto credit = [killed](Player* member)
+        {
+            if (member->GetQuestStatus(LastBreathQuest) == QUEST_STATUS_INCOMPLETE && member->isHonorOrXPTarget(killed))
+                member->KilledMonsterCredit(LastBreathCredit);
+        };
+        Group* group = player->GetGroup();
+        if (!group)
+        {
+            credit(player);
+            return;
+        }
+        for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
+            if (Player* member = ref->GetSource())
+                if (member->IsAtGroupRewardDistance(killed))
+                    credit(member);
     }
 
     void OnPlayerLogin(Player* player) override
@@ -815,6 +858,7 @@ public:
         TEXT_TEACH = 990170,
         TEXT_WRONG_CLASS = 990171,
         TEXT_TOO_LOW = 990172,
+        TEXT_UNPROVEN = 990173,
     };
 
     enum Actions : uint32
@@ -823,9 +867,17 @@ public:
         ACTION_LEAVE = 2,
     };
 
+    // A path with unlock quests is taught only to those who finished them
+    static bool Proven(Player* player, PathData const& path)
+    {
+        return !path.unlockQuest || player->GetQuestRewardStatus(path.unlockQuest);
+    }
+
     bool OnGossipHello(Player* player, Creature* creature) override
     {
         ClearGossipMenuFor(player);
+        if (creature->IsQuestGiver())
+            player->PrepareQuestMenu(creature->GetGUID());
         uint8 const pathId = TrainerPath(creature->GetEntry());
         std::shared_ptr<PathMap const> const all = Paths();
         auto path = all->find(pathId);
@@ -843,15 +895,34 @@ public:
         uint32 const fee = Subclass_NextFee(player);
         std::string const slot = "spec slot " + std::to_string(player->GetActiveSpec() + 1);
         std::string const cost = "This costs " + std::to_string(fee / Subclass::Gold) + " gold. Are you sure?";
-        if (Subclass_GetPath(player, player->GetActiveSpec()) == pathId)
+        bool const onPath = Subclass_GetPath(player, player->GetActiveSpec()) == pathId;
+        bool const proven = Proven(player, path->second);
+        if (onPath)
             AddGossipItemFor(player, GOSSIP_ICON_TRAINER, "Return " + slot + " to the old ways.", GOSSIP_SENDER_MAIN,
                              ACTION_LEAVE, cost, fee, false);
-        else
+        else if (proven)
             AddGossipItemFor(player, GOSSIP_ICON_TRAINER,
                              "Teach me the " + path->second.name + "'s path for " + slot + ".", GOSSIP_SENDER_MAIN,
                              ACTION_JOIN, cost, fee, false);
-        SendGossipMenuFor(player, TEXT_TEACH, creature->GetGUID());
+        SendGossipMenuFor(player, onPath || proven ? TEXT_TEACH : TEXT_UNPROVEN, creature->GetGUID());
         return true;
+    }
+
+    // The last unlock quest puts the active spec slot on the path for free, unless it already walks another one
+    bool OnQuestReward(Player* player, Creature* creature, Quest const* quest, uint32 /*opt*/) override
+    {
+        uint8 const pathId = TrainerPath(creature->GetEntry());
+        std::shared_ptr<PathMap const> const all = Paths();
+        auto path = all->find(pathId);
+        if (path == all->end() || quest->GetQuestId() != path->second.unlockQuest ||
+            Subclass_GetPath(player, player->GetActiveSpec()) != 0)
+            return false;
+
+        if (Subclass_ChangePath(player, pathId, false) == Subclass::ChangeCheck::Ok)
+            ChatHandler(player->GetSession())
+                .SendSysMessage("The dead answer you now. Spec slot " + std::to_string(player->GetActiveSpec() + 1) +
+                                " walks the " + path->second.name + "'s path.");
+        return false;
     }
 
     bool OnGossipSelect(Player* player, Creature* creature, uint32 /*sender*/, uint32 action) override
@@ -859,6 +930,10 @@ public:
         CloseGossipMenuFor(player);
         uint8 const pathId = TrainerPath(creature->GetEntry());
         uint8 const target = action == ACTION_JOIN ? pathId : 0;
+        std::shared_ptr<PathMap const> const all = Paths();
+        auto path = all->find(pathId);
+        if (target && (path == all->end() || !Proven(player, path->second)))
+            return true;
         ChatHandler chat(player->GetSession());
         switch (Subclass_ChangePath(player, target, true))
         {
