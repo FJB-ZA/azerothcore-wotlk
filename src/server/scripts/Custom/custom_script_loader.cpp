@@ -20,6 +20,7 @@
 void AddSC_mentor_mode();
 void AddSC_spec_slots();
 void AddSC_boost();
+void AddSC_client_status();
 
 // The name of this function should match:
 // void Add${NameOfDirectory}Scripts()
@@ -29,4 +30,5 @@ void AddCustomScripts()
     AddSC_mentor_mode();
     AddSC_spec_slots();
     AddSC_boost();
+    AddSC_client_status();
 }
