@@ -15,7 +15,6 @@
  * with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-
 // Lettered client patches (patch-A.MPQ to patch-Z.MPQ), which the 3.3.5 client loads after the numbered ones.
 
 #ifndef _LETTERED_PATCHES_H
