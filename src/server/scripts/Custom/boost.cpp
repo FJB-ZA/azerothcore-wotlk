@@ -114,19 +114,21 @@ std::string Refusal(Player* player)
 void Say(Player* player, std::string const& message) { ChatHandler(player->GetSession()).SendSysMessage(message); }
 
 // Runs `then` with whether the account has used this era's boost. Game masters may boost again, for testing.
+// Skipped when the player has left meanwhile, or relogged onto another character.
 void WithBoostUsed(Player* player, uint8 era, std::function<void(Player*, bool)> then)
 {
     WorldSession* session = player->GetSession();
+    ObjectGuid const guid = player->GetGUID();
     bool const unlimited = session->GetSecurity() >= SEC_GAMEMASTER;
     session->GetQueryProcessor().AddCallback(
         CharacterDatabase
             .AsyncQuery(Acore::StringFormat("SELECT 1 FROM solo_wow_boost WHERE account = {} AND era = {}",
                                             session->GetAccountId(), era))
             .WithCallback(
-                [session, unlimited, then = std::move(then)](QueryResult result)
+                [session, guid, unlimited, then = std::move(then)](QueryResult result)
                 {
                     Player* player = session->GetPlayer();
-                    if (player && player->IsInWorld())
+                    if (player && player->IsInWorld() && player->GetGUID() == guid)
                         then(player, result && !unlimited);
                 }));
 }
@@ -378,6 +380,9 @@ float ItemScore(ItemTemplate const* proto, Boost::Role role, uint8 level, bool o
 bool Wearable(Player* player, ItemTemplate const* proto)
 {
     if (player->CanUseItem(proto) != EQUIP_ERR_OK)
+        return false;
+    // The template overload of CanUseItem doesn't check weapon skills; the proficiencies are learned by now.
+    if (uint32 const skill = proto->GetSkill(); skill && !player->GetSkillValue(skill))
         return false;
     // Armour pieces of the class's own armour type only (cloaks are cloth for everyone).
     if (proto->Class == ITEM_CLASS_ARMOR && proto->InventoryType != INVTYPE_CLOAK &&
