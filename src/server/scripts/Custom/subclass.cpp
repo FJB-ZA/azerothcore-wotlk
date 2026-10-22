@@ -18,6 +18,7 @@
 
 #include "Chat.h"
 #include "Creature.h"
+#include "ScriptedGossip.h"
 #include "DatabaseEnv.h"
 #include "GameTime.h"
 #include "NPCPackets.h"
@@ -79,6 +80,9 @@ std::shared_ptr<std::unordered_map<uint32, CreatureSwap> const> minions =
     std::make_shared<std::unordered_map<uint32, CreatureSwap> const>();
 std::atomic<bool> anyModifier = false;
 std::atomic<bool> anyMinionModifier = false;
+// Path trainer NPCs (subclass_path_trainer): creature entry -> path
+std::shared_ptr<std::unordered_map<uint32, uint8> const> trainers =
+    std::make_shared<std::unordered_map<uint32, uint8> const>();
 
 // The guardian summoned next to each player's pet
 std::mutex guardiansLock;
@@ -175,6 +179,16 @@ void LoadPaths()
         } while (result->NextRow());
     }
 
+    auto loadedTrainers = std::make_shared<std::unordered_map<uint32, uint8>>();
+    if (QueryResult result = WorldDatabase.Query("SELECT creature_entry, path_id FROM subclass_path_trainer"))
+    {
+        do
+        {
+            Field* fields = result->Fetch();
+            (*loadedTrainers)[fields[0].Get<uint32>()] = fields[1].Get<uint8>();
+        } while (result->NextRow());
+    }
+
     bool modifier = false;
     for (auto const& [id, path] : *loaded)
     {
@@ -187,8 +201,16 @@ void LoadPaths()
     std::lock_guard<std::mutex> guard(pathsLock);
     paths = loaded;
     minions = loadedMinions;
+    trainers = loadedTrainers;
     anyModifier = modifier;
     anyMinionModifier = minionModifier;
+}
+
+uint8 TrainerPath(uint32 entry)
+{
+    std::lock_guard<std::mutex> guard(pathsLock);
+    auto found = trainers->find(entry);
+    return found != trainers->end() ? found->second : 0;
 }
 
 std::shared_ptr<std::unordered_map<uint32, CreatureSwap> const> Minions()
@@ -505,6 +527,7 @@ Subclass::ChangeCheck Subclass_ChangePath(Player* player, uint8 target, bool cha
                       fee, uint32(GameTime::GetGameTime().count()));
     player->SaveToDB(trans, false, false);
     CharacterDatabase.CommitTransaction(trans);
+    SpecSlots_SendState(player);
     return check;
 }
 
@@ -568,6 +591,7 @@ public:
         LoadCharacter(player);
         Normalize(player);
         DismissForeignPet(player);
+        SpecSlots_SendState(player);  // spec slots sent theirs before the paths were loaded
     }
 
     void OnPlayerLogout(Player* player) override
@@ -779,6 +803,87 @@ public:
     void OnCreatureRemoveWorld(Creature* creature) override { DismissGuardian(creature); }
 };
 
+// A path trainer (subclass_path_trainer) puts the active spec slot on its path, or back on the plain class, for the
+// path-change fee
+class npc_subclass_path_trainer : public CreatureScript
+{
+public:
+    npc_subclass_path_trainer() : CreatureScript("npc_subclass_path_trainer") {}
+
+    enum Texts : uint32
+    {
+        TEXT_TEACH = 990170,
+        TEXT_WRONG_CLASS = 990171,
+        TEXT_TOO_LOW = 990172,
+    };
+
+    enum Actions : uint32
+    {
+        ACTION_JOIN = 1,
+        ACTION_LEAVE = 2,
+    };
+
+    bool OnGossipHello(Player* player, Creature* creature) override
+    {
+        ClearGossipMenuFor(player);
+        uint8 const pathId = TrainerPath(creature->GetEntry());
+        std::shared_ptr<PathMap const> const all = Paths();
+        auto path = all->find(pathId);
+        if (path == all->end() || path->second.baseClass != player->getClass())
+        {
+            SendGossipMenuFor(player, TEXT_WRONG_CLASS, creature->GetGUID());
+            return true;
+        }
+        if (player->GetLevel() < path->second.unlockLevel)
+        {
+            SendGossipMenuFor(player, TEXT_TOO_LOW, creature->GetGUID());
+            return true;
+        }
+
+        uint32 const fee = Subclass_NextFee(player);
+        std::string const slot = "spec slot " + std::to_string(player->GetActiveSpec() + 1);
+        std::string const cost = "This costs " + std::to_string(fee / Subclass::Gold) + " gold. Are you sure?";
+        if (Subclass_GetPath(player, player->GetActiveSpec()) == pathId)
+            AddGossipItemFor(player, GOSSIP_ICON_TRAINER, "Return " + slot + " to the old ways.", GOSSIP_SENDER_MAIN,
+                             ACTION_LEAVE, cost, fee, false);
+        else
+            AddGossipItemFor(player, GOSSIP_ICON_TRAINER,
+                             "Teach me the " + path->second.name + "'s path for " + slot + ".", GOSSIP_SENDER_MAIN,
+                             ACTION_JOIN, cost, fee, false);
+        SendGossipMenuFor(player, TEXT_TEACH, creature->GetGUID());
+        return true;
+    }
+
+    bool OnGossipSelect(Player* player, Creature* creature, uint32 /*sender*/, uint32 action) override
+    {
+        CloseGossipMenuFor(player);
+        uint8 const pathId = TrainerPath(creature->GetEntry());
+        uint8 const target = action == ACTION_JOIN ? pathId : 0;
+        ChatHandler chat(player->GetSession());
+        switch (Subclass_ChangePath(player, target, true))
+        {
+            case Subclass::ChangeCheck::Ok:
+                if (target)
+                    chat.SendSysMessage("The dead answer you now. Spec slot " +
+                                        std::to_string(player->GetActiveSpec() + 1) + " walks the " +
+                                        Subclass_PathName(target) + "'s path.");
+                else
+                    chat.SendSysMessage("Spec slot " + std::to_string(player->GetActiveSpec() + 1) +
+                                        " is back on the old ways.");
+                break;
+            case Subclass::ChangeCheck::NoMoney:
+                chat.SendSysMessage("You can't afford that yet.");
+                break;
+            case Subclass::ChangeCheck::InCombat:
+                chat.SendSysMessage("Not while you're fighting.");
+                break;
+            default:
+                break;
+        }
+        return true;
+    }
+};
+
 // GM commands. Players change paths at the path's trainer NPC.
 class SubclassCommandScript : public CommandScript
 {
@@ -859,4 +964,5 @@ void AddSC_subclass()
     new SubclassPetScript();
     new SubclassCreatureScript();
     new SubclassCommandScript();
+    new npc_subclass_path_trainer();
 }

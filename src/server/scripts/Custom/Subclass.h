@@ -39,4 +39,7 @@ uint32 Subclass_BonusSpell(Unit const* caster, uint32 spellId);
 // A path's spell swaps: original, replacement
 std::vector<std::pair<uint32, uint32>> Subclass_AllSwaps(uint8 pathId);
 
+// From spec_slots.cpp: sends the SpecSlots addon the slots and their paths
+void SpecSlots_SendState(Player* player);
+
 #endif

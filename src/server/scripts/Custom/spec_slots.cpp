@@ -20,6 +20,7 @@
 #include "Player.h"
 #include "ScriptMgr.h"
 #include "SpecSlotsPolicy.h"
+#include "Subclass.h"
 #include "Spell.h"
 #include "SpellInfo.h"
 #include "Trainer.h"
@@ -95,9 +96,18 @@ void SendState(Player* player)
     for (uint8 group = 0; group < Owned(player) && group < SpecSlots::MaxSlots; ++group)
         points[group] = PointsIn(player, group);
 
+    // Each slot's sub-class path (subclass.cpp) rides along
+    std::array<std::string, SpecSlots::MaxSlots> paths;
+    for (uint8 group = 0; group < SpecSlots::MaxSlots; ++group)
+    {
+        uint8 const pathId = group < Owned(player) ? Subclass_GetPath(player, group) : 0;
+        paths[group] = SpecSlots::FormatPath(pathId, Subclass_PathName(pathId));
+    }
+
     WorldPacket data;
-    std::string const message = std::string(SpecSlots::AddonPrefix) + '\t' +
-                                SpecSlots::FormatState(Active(player), Owned(player), NextPrice(player), points);
+    std::string const message =
+        std::string(SpecSlots::AddonPrefix) + '\t' +
+        SpecSlots::FormatStateWithPaths(Active(player), Owned(player), NextPrice(player), points, paths);
     ChatHandler::BuildChatPacket(data, CHAT_MSG_WHISPER, LANG_ADDON, player, player, message);
     player->SendDirectMessage(&data);
 }
@@ -162,6 +172,9 @@ void TryBuy(Player* player, uint8 slot)
     }
 }
 }  // namespace
+
+// For subclass.cpp: a path change shows in the addon's panel at once
+void SpecSlots_SendState(Player* player) { SendState(player); }
 
 class SpecSlotsWorldScript : public WorldScript
 {
