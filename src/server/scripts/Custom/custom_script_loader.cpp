@@ -26,6 +26,7 @@ void AddSC_subclass_trainer();
 void AddSC_subclass_combat();
 void AddSC_subclass_minions();
 void AddSC_subclass_npc();
+void AddSC_gladiator_spells();
 
 // The name of this function should match:
 // void Add${NameOfDirectory}Scripts()
@@ -41,4 +42,5 @@ void AddCustomScripts()
     AddSC_subclass_combat();
     AddSC_subclass_minions();
     AddSC_subclass_npc();
+    AddSC_gladiator_spells();
 }
