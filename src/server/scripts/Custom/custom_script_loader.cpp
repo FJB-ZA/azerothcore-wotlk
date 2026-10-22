@@ -20,6 +20,7 @@
 void AddSC_mentor_mode();
 void AddSC_spec_slots();
 void AddSC_boost();
+void AddSC_client_status();
 void AddSC_subclass_paths();
 void AddSC_subclass_trainer();
 void AddSC_subclass_combat();
@@ -34,6 +35,7 @@ void AddCustomScripts()
     AddSC_mentor_mode();
     AddSC_spec_slots();
     AddSC_boost();
+    AddSC_client_status();
     AddSC_subclass_paths();
     AddSC_subclass_trainer();
     AddSC_subclass_combat();
