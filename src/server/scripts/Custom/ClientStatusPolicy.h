@@ -44,7 +44,8 @@ inline std::string FormatProgression(uint8_t step)
 // Server to client: "X1 <rate x 100> <maximum rate x 100> <paused 0 or 1>"
 inline std::string FormatXpRate(float rate, float maxRate, bool paused)
 {
-    return "X1 " + std::to_string(Hundredths(rate)) + ' ' + std::to_string(Hundredths(maxRate)) + (paused ? " 1" : " 0");
+    return "X1 " + std::to_string(Hundredths(rate)) + ' ' + std::to_string(Hundredths(maxRate)) +
+           (paused ? " 1" : " 0");
 }
 
 // Client to server: "Q" asks for both again

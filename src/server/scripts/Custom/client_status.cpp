@@ -71,7 +71,8 @@ void SendStatus(Player* player)
     if (IsBot(player))
         return;
     SendToClient(player, ClientStatus::FormatProgression(ProgressionStep(player)));
-    SendToClient(player, ClientStatus::FormatXpRate(XpRate(player), maxXpRate, player->HasPlayerFlag(PLAYER_FLAGS_NO_XP_GAIN)));
+    bool const paused = player->HasPlayerFlag(PLAYER_FLAGS_NO_XP_GAIN);
+    SendToClient(player, ClientStatus::FormatXpRate(XpRate(player), maxXpRate, paused));
 }
 
 // Sends the status on the player's next update, once the quest reward or command that changed it has finished
@@ -113,7 +114,8 @@ class ClientStatusPlayerScript : public PlayerScript
 public:
     ClientStatusPlayerScript()
         : PlayerScript("ClientStatusPlayerScript",
-                       {PLAYERHOOK_ON_LOGIN, PLAYERHOOK_CAN_PLAYER_USE_PRIVATE_CHAT, PLAYERHOOK_ON_PLAYER_COMPLETE_QUEST})
+                       {PLAYERHOOK_ON_LOGIN, PLAYERHOOK_CAN_PLAYER_USE_PRIVATE_CHAT,
+                        PLAYERHOOK_ON_PLAYER_COMPLETE_QUEST})
     {
     }
 
@@ -141,7 +143,10 @@ public:
 class ClientStatusCommandScript : public AllCommandScript
 {
 public:
-    ClientStatusCommandScript() : AllCommandScript("ClientStatusCommandScript", {ALLCOMMANDHOOK_ON_TRY_EXECUTE_COMMAND}) { }
+    ClientStatusCommandScript()
+        : AllCommandScript("ClientStatusCommandScript", {ALLCOMMANDHOOK_ON_TRY_EXECUTE_COMMAND})
+    {
+    }
 
     // Runs before the command, so the status goes out on the next update. ".ip set" changes the selected player.
     bool OnTryExecuteCommand(ChatHandler& handler, std::string_view cmdStr) override
