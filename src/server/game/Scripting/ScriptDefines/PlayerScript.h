@@ -235,6 +235,7 @@ enum PlayerHook
     PLAYERHOOK_ON_BEFORE_RECEIVE_SPELL_LIST_FROM_TRAINER,
     PLAYERHOOK_ON_GET_TRAINER_SPELL_STATE,
     PLAYERHOOK_ON_AFTER_TRAIN_SPELL,
+    PLAYERHOOK_ON_RESOLVE_TRAINER_SPELL,
     PLAYERHOOK_END
 };
 
@@ -953,6 +954,11 @@ public:
      * @param state The state the trainer worked out, to be read and overwritten
      */
     virtual void OnPlayerGetTrainerSpellState(Player const* /*player*/, uint32 /*trainerId*/, uint32 /*spellId*/, Trainer::SpellState& /*state*/) {}
+
+    /**
+     * @brief Maps the spell id a client asked a trainer to teach to the trainer spell it stands for, when a script displayed another id in its place.
+     */
+    virtual void OnPlayerResolveTrainerSpell(Player const* /*player*/, uint32 /*trainerId*/, uint32& /*spellId*/) {}
 
     /**
      * @brief This hook is called after a trainer purchase went through, once the money has been
