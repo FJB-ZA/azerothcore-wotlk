@@ -135,9 +135,10 @@ void SwapActionButtons(Player* player)
         for (auto const& [id, path] : paths)
             for (SubclassPaths::SpellSwap const& swap : path.swaps)
             {
-                if (&path == current && swap.original == spellId)
+                bool const swappedIn = &path == current && (!swap.talent || player->HasSpell(swap.replacement));
+                if (swappedIn && swap.original == spellId)
                     wanted = swap.replacement;
-                else if (&path != current && swap.replacement == spellId)
+                else if (!swappedIn && swap.replacement == spellId)
                     wanted = swap.original;
             }
         if (wanted != spellId)
@@ -168,6 +169,18 @@ void Reconcile(Player* player)
         for (SubclassPaths::SpellSwap const& swap : path.swaps)
         {
             bool const hasOriginal = HasInSlot(player, swap.original, group);
+            if (swap.talent)
+            {
+                SpellInfo const* original = sSpellMgr->GetSpellInfo(swap.original);
+                bool const levelReached = original && player->GetLevel() >= original->SpellLevel;
+                SubclassPaths::SpellMove const move = SubclassPaths::TalentMove(
+                    onPath, hasOriginal, player->HasTalent(swap.replacement, group), levelReached);
+                if (move == SubclassPaths::SpellMove::DropOriginal)
+                    player->removeSpell(swap.original, mask, false);
+                else if (move == SubclassPaths::SpellMove::GiveOriginal && player->addSpell(swap.original, mask, true))
+                    player->SendLearnPacket(swap.original, true);
+                continue;
+            }
             bool const hasReplacement = HasInSlot(player, swap.replacement, group);
             switch (SubclassPaths::Move(onPath, hasOriginal, hasReplacement))
             {
@@ -178,6 +191,8 @@ void Reconcile(Player* player)
                     MoveSpell(player, swap.replacement, hasReplacement, swap.original, hasOriginal, mask);
                     break;
                 case SubclassPaths::SpellMove::None:
+                case SubclassPaths::SpellMove::DropOriginal:  // talent rows only
+                case SubclassPaths::SpellMove::GiveOriginal:
                     break;
             }
         }
@@ -441,7 +456,8 @@ uint32 LoadSpellSwaps()
                       pathId, replacement);
             continue;
         }
-        path->second.swaps.push_back({original, replacement, originalInfo->GetRank()});
+        bool const talent = GetTalentSpellPos(replacement) != nullptr;
+        path->second.swaps.push_back({original, replacement, originalInfo->GetRank(), talent});
         swappedOriginals.insert(original);
         // Talents, spell power and crit bonuses that count the original's school count the replacement too.
         sSpellMgr->SetBonusSchoolMask(replacement, originalInfo->SchoolMask);
@@ -578,7 +594,8 @@ public:
         : PlayerScript("SubclassPathsPlayerScript",
                        {PLAYERHOOK_ON_LOGIN, PLAYERHOOK_ON_LEARN_SPELL, PLAYERHOOK_ON_AFTER_TRAIN_SPELL,
                         PLAYERHOOK_ON_LEVEL_CHANGED, PLAYERHOOK_ON_AFTER_SPEC_SLOT_CHANGED, PLAYERHOOK_ON_UPDATE,
-                        PLAYERHOOK_ON_DELETE, PLAYERHOOK_CAN_LEARN_TALENT, PLAYERHOOK_CAN_PLAYER_USE_PRIVATE_CHAT})
+                        PLAYERHOOK_ON_DELETE, PLAYERHOOK_CAN_LEARN_TALENT, PLAYERHOOK_CAN_PLAYER_USE_PRIVATE_CHAT,
+                        PLAYERHOOK_ON_LEARN_TALENTS, PLAYERHOOK_ON_TALENTS_RESET})
     {
     }
 
@@ -622,6 +639,14 @@ public:
     }
 
     void OnPlayerLevelChanged(Player* player, uint8 /*oldLevel*/) override { MarkDirty(player); }
+
+    // A talent that replaces an original (Gladiator Stance for Battle Stance) moves it once learned or refunded.
+    void OnPlayerLearnTalents(Player* player, uint32 /*talentId*/, uint32 /*talentRank*/, uint32 /*spellId*/) override
+    {
+        MarkDirty(player);
+    }
+
+    void OnPlayerTalentsReset(Player* player, bool /*noCost*/) override { MarkDirty(player); }
 
     void OnPlayerAfterSpecSlotChanged(Player* player, uint8 /*newSlot*/) override
     {
