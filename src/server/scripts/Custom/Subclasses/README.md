@@ -12,5 +12,8 @@ that runs every path (`subclass_paths.cpp`, `SubclassPaths.h` and the rest) is o
    `custom_script_loader.cpp` calls. Leave it out if the path needs none.
 3. In solo-wow, the spells and the talent tree go in `patches/client/spell-data/subclasses/<path>.json`.
 4. In mod-playerbots, bot support goes in `src/Ai/Subclass/<Path>/` (see its README).
+5. Optional: gear and glyphs in solo-wow's `subclasses/<path>-gear.json` with their procs in
+   `<date>_<path>_gear.sql`, and retail-style charges for a spell as a `solo_wow_spell_charges` row
+   (`spell_charges.cpp`; the spell's DBC cooldown must be 0).
 
 Sources and SQL in subfolders are picked up without CMake or updater changes.
