@@ -1,5 +1,10 @@
 # Sub-class paths
 
+| Path | Class | Folder | IDs |
+|---|---|---|---|
+| 1 Gladiator | Warrior | `Gladiator/` | 990100-990299, talent tab 990 |
+| 2 Necromancer | Warlock | `Necromancer/` | 990300-990499 in every table (spells, creatures, NPCs, quests, items, texts) |
+
 Each path has its own folder here, and its world SQL is in `data/sql/custom/db_world/subclasses/`. The shared code
 that runs every path (`subclass_paths.cpp`, `SubclassPaths.h` and the rest) is one folder up, in `Custom/`.
 

@@ -74,8 +74,9 @@ uint16 ActivePathId(Player const* player);
 // What the player's next path change costs, in copper
 uint32 NextChangeFee(Player* player);
 
-// Moves the active slot to `pathId` (PlainClass to leave its path), charging the fee; returns why it refused, or empty
-std::string ChangeActivePath(Player* player, uint16 pathId);
+// Moves the active slot to `pathId` (PlainClass to leave its path), charging the fee unless `free`; returns why it
+// refused, or empty
+std::string ChangeActivePath(Player* player, uint16 pathId, bool free = false);
 
 // How many bodies share this minion's health and melee: the pet and the extra bodies summoned with it, or 1
 uint8 MeleeBodies(Unit const* minion);

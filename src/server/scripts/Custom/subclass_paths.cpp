@@ -560,7 +560,7 @@ uint16 ActivePathId(Player const* player)
 
 uint32 NextChangeFee(Player* player) { return FeeFor(PathsOf(player), uint32(GameTime::GetGameTime().count())); }
 
-std::string ChangeActivePath(Player* player, uint16 pathId) { return ChangePath(player, pathId, false); }
+std::string ChangeActivePath(Player* player, uint16 pathId, bool free) { return ChangePath(player, pathId, free); }
 }
 
 class SubclassPathsWorldScript : public WorldScript
