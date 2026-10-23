@@ -1808,7 +1808,7 @@ class spell_gen_pet_summoned : public SpellScript
             Pet* newPet = new Pet(player, newPetType);
             if (newPet->LoadPetFromDB(player, 0, player->GetLastPetNumber(), true, 100, true))
             {
-                switch (GetPetRulesEntry(newPet->GetEntry()))
+                switch (newPet->GetEntry())
                 {
                     case NPC_DOOMGUARD:
                     case NPC_INFERNAL:

@@ -347,7 +347,8 @@ class spell_warl_generic_scaling : public AuraScript
                 amount = CalculatePct(std::max<int32>(0, maximum), 57);
 
                 // Glyph of felguard, 99% sure this is a HACK
-                if (GetPetRulesEntry(pet->GetEntry()) == NPC_FELGUARD)
+                // solo-wow: by family, so a sub-class path's Felguard in another body counts too
+                if (pet->IsCreature() && pet->ToCreature()->GetCreatureTemplate()->family == CREATURE_FAMILY_FELGUARD)
                 {
                     if (AuraEffect* glyph = owner->GetAuraEffect(SPELL_GLYPH_OF_FELGUARD, EFFECT_0))
                     {

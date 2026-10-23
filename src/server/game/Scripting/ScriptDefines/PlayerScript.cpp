@@ -999,6 +999,11 @@ void ScriptMgr::OnPlayerGetTrainerSpellState(Player const* player, uint32 traine
     CALL_ENABLED_HOOKS(PlayerScript, PLAYERHOOK_ON_GET_TRAINER_SPELL_STATE, script->OnPlayerGetTrainerSpellState(player, trainerId, spellId, state));
 }
 
+void ScriptMgr::OnPlayerResolveTrainerSpell(Player const* player, uint32 trainerId, uint32& spellId)
+{
+    CALL_ENABLED_HOOKS(PlayerScript, PLAYERHOOK_ON_RESOLVE_TRAINER_SPELL, script->OnPlayerResolveTrainerSpell(player, trainerId, spellId));
+}
+
 void ScriptMgr::OnPlayerAfterTrainSpell(Player* player, Creature* trainer, uint32 spellId)
 {
     CALL_ENABLED_HOOKS(PlayerScript, PLAYERHOOK_ON_AFTER_TRAIN_SPELL, script->OnPlayerAfterTrainSpell(player, trainer, spellId));

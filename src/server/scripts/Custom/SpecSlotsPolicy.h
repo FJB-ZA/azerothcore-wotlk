@@ -89,30 +89,6 @@ inline std::string FormatState(uint8_t active, uint8_t owned, uint32_t nextPrice
     return state;
 }
 
-// A slot's sub-class path for the addon: "-" for the plain class, else "<id>:<Name>" with spaces as underscores
-inline std::string FormatPath(uint8_t pathId, std::string name)
-{
-    if (pathId == 0)
-        return "-";
-    for (char& c : name)
-        if (c == ' ')
-            c = '_';
-    return std::to_string(pathId) + ':' + name;
-}
-
-// Server to addon, with paths: "S2 <active> <owned> <nextPrice> <p1> <p2> <p3> <p4> <path1> <path2> <path3> <path4>".
-// Clients that only know S1 ignore it and keep the S1 the server also sends.
-inline std::string FormatStateWithPaths(uint8_t active, uint8_t owned, uint32_t nextPrice,
-                                        std::array<TreePoints, MaxSlots> const& points,
-                                        std::array<std::string, MaxSlots> const& paths)
-{
-    std::string state = FormatState(active, owned, nextPrice, points);
-    state[1] = '2';
-    for (std::string const& path : paths)
-        state += ' ' + path;
-    return state;
-}
-
 struct Command
 {
     enum class Kind { Query, Swap } kind;

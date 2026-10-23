@@ -3976,6 +3976,51 @@ bool Player::resetTalents(bool noResetCost)
     return true;
 }
 
+uint32 Player::ResetTalentTab(uint32 talentTabId)
+{
+    uint32 refunded = 0;
+    for (PlayerTalentMap::iterator iter = m_talents.begin(); iter != m_talents.end(); )
+    {
+        PlayerTalentMap::iterator itr = iter++;
+        if (itr->second->State == PLAYERSPELL_REMOVED || !(itr->second->specMask & GetActiveSpecMask()))
+            continue;
+
+        TalentEntry const* talentInfo = sTalentStore.LookupEntry(itr->second->talentID);
+        TalentSpellPos const* talentPos = GetTalentSpellPos(itr->first);
+        SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(itr->first);
+        if (!talentInfo || talentInfo->TalentTab != talentTabId || !talentPos || !spellInfo)
+            continue;
+
+        _removeTalentAurasAndSpells(itr->first);
+
+        bool removed = false;
+        if (talentInfo->addToSpellBook)
+            if (!spellInfo->HasAttribute(SPELL_ATTR0_PASSIVE) && !spellInfo->HasEffect(SPELL_EFFECT_LEARN_SPELL))
+            {
+                removeSpell(itr->first, GetActiveSpecMask(), false);
+                removed = true;
+            }
+
+        if (!removed)
+            SendLearnPacket(itr->first, false);
+
+        for (uint8 i = 0; i < MAX_SPELL_EFFECTS; ++i)
+            if (spellInfo->Effects[i].Effect == SPELL_EFFECT_LEARN_SPELL)
+                if (sSpellMgr->IsAdditionalTalentSpell(spellInfo->Effects[i].TriggerSpell))
+                    removeSpell(spellInfo->Effects[i].TriggerSpell, GetActiveSpecMask(), false);
+
+        refunded += talentPos->rank + 1;
+        _removeTalent(itr, GetActiveSpecMask());
+    }
+
+    if (refunded)
+    {
+        m_usedTalentCount = m_usedTalentCount > refunded ? m_usedTalentCount - refunded : 0;
+        InitTalentForLevel();
+    }
+    return refunded;
+}
+
 void Player::SetFreeTalentPoints(uint32 points)
 {
     sScriptMgr->OnPlayerFreeTalentPointsChanged(this, points);

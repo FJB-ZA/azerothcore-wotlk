@@ -37,32 +37,6 @@
 #include "Util.h"
 #include "WorldPacket.h"
 #include "WorldSession.h"
-#include <atomic>
-#include <mutex>
-
-namespace
-{
-std::mutex petRulesLock;
-std::atomic<bool> anyPetRulesEntry{false};
-std::unordered_map<uint32, uint32> petRulesEntries;
-}
-
-uint32 GetPetRulesEntry(uint32 entry)
-{
-    if (!anyPetRulesEntry.load(std::memory_order_relaxed))
-        return entry;
-
-    std::lock_guard<std::mutex> guard(petRulesLock);
-    auto const found = petRulesEntries.find(entry);
-    return found != petRulesEntries.end() ? found->second : entry;
-}
-
-void SetPetRulesEntries(std::unordered_map<uint32, uint32> entries)
-{
-    std::lock_guard<std::mutex> guard(petRulesLock);
-    petRulesEntries = std::move(entries);
-    anyPetRulesEntry = !petRulesEntries.empty();
-}
 
 Pet::Pet(Player* owner, PetType type) : Guardian(nullptr, owner ? owner->GetGUID() : ObjectGuid::Empty),
     m_usedTalentCount(0),
@@ -1113,7 +1087,7 @@ bool Guardian::InitStatsForLevel(uint8 petlevel)
         }
     }
 
-    uint32 creature_ID = (petType == HUNTER_PET) ? 1 : cinfo->Entry;
+    uint32 creature_ID = (petType == HUNTER_PET) ? 1 : GetStatEntry();
 
     if (petType == HUNTER_PET)
     {
@@ -1221,7 +1195,7 @@ bool Guardian::InitStatsForLevel(uint8 petlevel)
                     SetBaseWeaponDamage(BASE_ATTACK, MAXDAMAGE, float(petlevel + (petlevel / 4)));
                 }
 
-                switch (GetPetRulesEntry(GetEntry()))
+                switch (GetStatEntry())
                 {
                     case NPC_WATER_ELEMENTAL_PERM:
                         {
@@ -1238,7 +1212,7 @@ bool Guardian::InitStatsForLevel(uint8 petlevel)
             }
         default:
             {
-                switch (GetPetRulesEntry(GetEntry()))
+                switch (GetStatEntry())
                 {
                     case NPC_FIRE_ELEMENTAL:
                         {
@@ -1430,7 +1404,7 @@ bool Guardian::InitStatsForLevel(uint8 petlevel)
     }
 
     // Can be summon and guardian
-    if (GetEntry() == NPC_RISEN_GHOUL)
+    if (GetStatEntry() == NPC_RISEN_GHOUL)
     {
         // 100% energy after summon
         SetPower(POWER_ENERGY, GetMaxPower(POWER_ENERGY));
