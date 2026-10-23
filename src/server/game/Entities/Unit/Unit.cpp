@@ -7140,6 +7140,8 @@ bool Unit::Attack(Unit* victim, bool meleeAttack)
     if (HasUnattackableAura())
         RemoveAurasByType(SPELL_AURA_MOD_UNATTACKABLE);
 
+    bool const isNewAttack = !m_attacking;
+
     if (m_attacking)
     {
         if (m_attacking == victim)
@@ -7229,8 +7231,10 @@ bool Unit::Attack(Unit* victim, bool meleeAttack)
         }
     }
 
-    // delay offhand weapon attack by 50% of the base attack time
-    if (HasOffhandWeaponForAttack() && isAttackReady(OFF_ATTACK))
+    // delay offhand weapon attack by 50% of the base attack time, on a new attack only
+    // unlike the timer writes this replaced, this runs once per attack start rather than once
+    // per swing, so it staggers the offhand without locking the two swing intervals together
+    if (isNewAttack && HasOffhandWeaponForAttack())
         setAttackTimer(OFF_ATTACK, std::max(getAttackTimer(OFF_ATTACK), getAttackTimer(BASE_ATTACK) + int32(CalculatePct(GetFloatValue(UNIT_FIELD_BASEATTACKTIME), 50))));
 
     if (meleeAttack)
@@ -7276,7 +7280,7 @@ bool Unit::AttackStop()
     return true;
 }
 
-void Unit::CombatStop(bool includingCast, bool mutualPvP)
+void Unit::CombatStop(bool includingCast, bool mutualPvP, bool keepPvPForOthers)
 {
     if (includingCast && IsNonMeleeSpellCast(false))
         InterruptNonMeleeSpells(false);
@@ -7289,7 +7293,7 @@ void Unit::CombatStop(bool includingCast, bool mutualPvP)
         pCreature->ClearLastLeashExtensionTimePtr();
 
     if (mutualPvP)
-        ClearInCombat();
+        ClearInCombat(keepPvPForOthers);
     else
     {
         GetCombatManager().EndAllPvECombat();
@@ -10426,12 +10430,18 @@ void Unit::SetImmuneToNPC(bool apply, bool keepCombat)
         RemoveUnitFlag(UNIT_FLAG_IMMUNE_TO_NPC);
 }
 
-void Unit::ClearInCombat()
+void Unit::ClearInCombat(bool keepPvPForOthers)
 {
     m_CombatTimer = 0;
     // Let CombatManager handle flag removal through UpdateOwnerCombatState
     // so that AtExitCombat/AtDisengage callbacks properly fire.
-    GetCombatManager().EndAllCombat();
+    if (keepPvPForOthers)
+    {
+        GetCombatManager().EndAllPvECombat();
+        GetCombatManager().SuppressPvPCombat();
+    }
+    else
+        GetCombatManager().EndAllCombat();
     // If flag is still set (e.g. set by old code path without CombatReference),
     // remove it directly.
     if (IsInCombat())
@@ -11141,13 +11151,18 @@ void Unit::SendSpeedToController(UnitMoveType mtype, Player* target) const
 
 void Unit::setDeathState(DeathState s, bool despawn)
 {
+    bool const wasAlive = IsAlive();
+
     // death state needs to be updated before RemoveAllAurasOnDeath() calls HandleChannelDeathItem(..) so that
     // it can be used to check creation of death items (such as soul shards).
     m_deathState = s;
 
     if (s != DeathState::Alive && s != DeathState::JustRespawned)
     {
-        CombatStop();
+        // restart our pvp timers so units fighting us get a full pvp timeout from our death (#27967)
+        if (wasAlive)
+            GetCombatManager().RestartPvPCombatTimers();
+        CombatStop(false, /*mutualPvP*/ true, /*keepPvPForOthers*/ true);
         ClearComboPointHolders();                           // any combo points pointed to unit lost at it death
 
         if (IsNonMeleeSpellCast(false))
@@ -13762,8 +13777,9 @@ void Unit::Kill(Unit* killer, Unit* victim, bool durabilityLoss, WeaponAttackTyp
                 //Remove all expected to remove at death auras (most important negative case like DoT or periodic triggers)
                 victim->RemoveAllAurasOnDeath();
 
-                // Stop attacks
-                victim->CombatStop();
+                // Stop attacks - units in pvp combat with us keep a full pvp timeout, as on a real death
+                victim->GetCombatManager().RestartPvPCombatTimers();
+                victim->CombatStop(false, /*mutualPvP*/ true, /*keepPvPForOthers*/ true);
 
                 // restore for use at real death
                 victim->SetUInt32Value(PLAYER_SELF_RES_SPELL, ressSpellId);
