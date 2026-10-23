@@ -115,7 +115,7 @@ constexpr float BodyShare(uint8_t bodies)
     return 1.0f / float(bodies > 1 ? bodies : 1);
 }
 
-enum class SpellMove { None, ToReplacement, ToOriginal };
+enum class SpellMove { None, ToReplacement, ToOriginal, DropOriginal, GiveOriginal };
 
 // One swap row in the active slot: its replacement belongs there only while the slot follows the row's path.
 constexpr SpellMove Move(bool slotOnRowPath, bool hasOriginal, bool hasReplacement)
@@ -123,6 +123,17 @@ constexpr SpellMove Move(bool slotOnRowPath, bool hasOriginal, bool hasReplaceme
     if (slotOnRowPath)
         return hasOriginal ? SpellMove::ToReplacement : SpellMove::None;
     return hasReplacement ? SpellMove::ToOriginal : SpellMove::None;
+}
+
+// A swap row whose replacement is a talent of the path's tree: the talent system owns the replacement, so only the
+// original moves. Off the path a still-known talent is about to be refunded, so its original comes back with it.
+constexpr SpellMove TalentMove(bool slotOnRowPath, bool hasOriginal, bool hasTalent, bool originalLevelReached)
+{
+    if (hasOriginal)
+        return slotOnRowPath && hasTalent ? SpellMove::DropOriginal : SpellMove::None;
+    if (slotOnRowPath)
+        return !hasTalent && originalLevelReached ? SpellMove::GiveOriginal : SpellMove::None;
+    return hasTalent ? SpellMove::GiveOriginal : SpellMove::None;
 }
 
 // A path's own tree (subclass_path.talent_tab) opens only while the active slot follows it; class trees have owner 0.
