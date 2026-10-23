@@ -49,12 +49,12 @@ INSERT INTO `creature_template_model` (`CreatureID`, `Idx`, `CreatureDisplayID`,
 DELETE FROM `creature` WHERE `guid` IN (9990370, 9990371);
 DROP TEMPORARY TABLE IF EXISTS `necromancer_spawn`;
 CREATE TEMPORARY TABLE `necromancer_spawn` AS SELECT * FROM `creature` WHERE `guid` = 41834;  -- Kaal Soulreaper
-UPDATE `necromancer_spawn` SET `guid` = 9990370, `id1` = 990370, `position_x` = 1783.5, `position_y` = 47.5,
+UPDATE `necromancer_spawn` SET `guid` = 9990370, `id` = 990370, `position_x` = 1783.5, `position_y` = 47.5,
   `position_z` = -61.41, `orientation` = 2.2;
 INSERT INTO `necromancer_spawn` SELECT * FROM `creature` WHERE `guid` = 4199;  -- Abercrombie
-UPDATE `necromancer_spawn` SET `guid` = 9990371, `id1` = 990371, `position_x` = -10279.5, `position_y` = 77.5,
+UPDATE `necromancer_spawn` SET `guid` = 9990371, `id` = 990371, `position_x` = -10279.5, `position_y` = 77.5,
   `position_z` = 38.93, `orientation` = 3.9 WHERE `guid` = 4199;
-UPDATE `necromancer_spawn` SET `id2` = 0, `id3` = 0, `equipment_id` = 0, `wander_distance` = 0, `MovementType` = 0;
+UPDATE `necromancer_spawn` SET `equipment_id` = 0, `wander_distance` = 0, `MovementType` = 0;
 INSERT INTO `creature` SELECT * FROM `necromancer_spawn`;
 DROP TEMPORARY TABLE `necromancer_spawn`;
 
