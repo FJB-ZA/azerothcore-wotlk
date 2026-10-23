@@ -63,8 +63,9 @@ INSERT INTO `subclass_spell_swap` (`path_id`, `original_spell`, `replacement_spe
 (1, 5782, 990144), (1, 6213, 990144), (1, 6215, 990144),
 -- Summons: Imp, Voidwalker, Succubus, Felhunter, Felguard (TBC talent)
 (1, 688, 990150), (1, 697, 990151), (1, 712, 990152), (1, 691, 990153), (1, 30146, 990154),
--- Inferno -> Bone Colossus and its impact, Ritual of Doom -> Ritual of the Lich and the summon its portal casts
-(1, 1122, 990172), (1, 22703, 990173), (1, 18540, 990174), (1, 18541, 990175);
+-- Inferno -> Bone Colossus and its impact. Ritual of Doom -> Ritual of the Lich, the spell its portal casts, and
+-- the summon that spell's script casts (Summon Doomguard)
+(1, 1122, 990172), (1, 22703, 990173), (1, 18540, 990174), (1, 18541, 990175), (1, 60478, 990176);
 
 DELETE FROM `subclass_creature_swap` WHERE `path_id` = 1;
 INSERT INTO `subclass_creature_swap`
