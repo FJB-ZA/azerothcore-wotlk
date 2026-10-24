@@ -218,6 +218,7 @@ void Start(Player* player, Map* map, Keystone const& key)
     run->keyOwner = player->GetGUID();
     run->countdownMs = CountdownMs;
     run->state = RunState::Countdown;
+    run->checkpoint.Relocate(run->dungeon->x, run->dungeon->y, run->dungeon->z, run->dungeon->o);
     map->DoForAllPlayers([&](Player* member) { run->participants.insert(member->GetGUID()); });
     CollectForces(map, *run);
     BringTeemingCopies(map, *run);
@@ -226,6 +227,23 @@ void Start(Player* player, Map* map, Keystone const& key)
     ScaleMap(map, *run);
     Announce(map, player->GetName() + " starts " + KeyName(key) + " (" + AffixLine(*run) + "). The timer starts in " +
                       std::to_string(CountdownMs / 1000) + " seconds.", true);
+}
+
+// The checkpoint moves to the living player nearest the fallen boss, who stands on ground the group can reach
+void MoveCheckpoint(Creature* boss, MythicRun& run)
+{
+    Player* nearest = nullptr;
+    boss->GetMap()->DoForAllPlayers([&](Player* player)
+    {
+        if (!player->IsAlive() || player->IsGameMaster() || player->GetVehicle() || player->GetTransport() ||
+            player->IsFlying())
+            return;
+        if (!nearest || boss->GetExactDist(player) < boss->GetExactDist(nearest))
+            nearest = player;
+    });
+    if (nearest)
+        run.checkpoint.Relocate(nearest->GetPositionX(), nearest->GetPositionY(), nearest->GetPositionZ(),
+                                nearest->GetOrientation());
 }
 
 // A whole group of bots, alone in the dungeon, alive and out of combat; the leader's key goes first
@@ -580,6 +598,8 @@ public:
             return;
         creature->loot.clear();
         creature->RemoveDynamicFlag(UNIT_DYNFLAG_LOOTABLE);
+        if (IsBoss(creature))
+            MoveCheckpoint(creature, *run);
 
         ObjectGuid::LowType const spawnId = creature->GetSpawnId();
         bool const counts = spawnId ? run->forceSpawns.count(spawnId) && run->counted.insert(spawnId).second
@@ -594,7 +614,26 @@ public:
 class MythicRunPlayerScript : public PlayerScript
 {
 public:
-    MythicRunPlayerScript() : PlayerScript("MythicRunPlayerScript", {PLAYERHOOK_ON_PLAYER_JUST_DIED}) { }
+    MythicRunPlayerScript()
+        : PlayerScript("MythicRunPlayerScript", {PLAYERHOOK_ON_PLAYER_JUST_DIED, PLAYERHOOK_CAN_REPOP_AT_GRAVEYARD})
+    {
+    }
+
+    // Releasing in a run brings a participant back alive at the checkpoint instead of the graveyard outside
+    bool OnPlayerCanRepopAtGraveyard(Player* player) override
+    {
+        MythicRun* run = FindRun(player->GetMap());
+        if (!run || run->state == RunState::None || !run->participants.count(player->GetGUID()))
+            return true;
+        if (!player->IsAlive())
+        {
+            player->ResurrectPlayer(1.0f);
+            player->SpawnCorpseBones();
+        }
+        Position const& at = run->checkpoint;
+        player->NearTeleportTo(at.GetPositionX(), at.GetPositionY(), at.GetPositionZ(), at.GetOrientation());
+        return false;
+    }
 
     void OnPlayerJustDied(Player* player) override
     {

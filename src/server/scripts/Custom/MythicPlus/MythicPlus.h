@@ -23,13 +23,13 @@
 #include "MythicDungeonTable.h"
 #include "MythicKeystonePolicy.h"
 #include "ObjectGuid.h"
+#include "Position.h"
 
 class Creature;
 class Map;
 class Player;
 class Unit;
 class WorldObject;
-struct Position;
 
 // Mythic+ engine (solo-wow): the run each instance map carries and the calls between the Mythic+ scripts. The rules
 // live in the policy headers next to this one.
@@ -90,6 +90,8 @@ struct MythicRun : public DataMap::Base
     uint64 finalMs = 0;
     uint8 upgrade = 0;
     std::set<ObjectGuid> looted;
+    // Where a released participant comes back alive, as in retail: the entrance, then where the last boss fell
+    Position checkpoint;
 
     [[nodiscard]] bool Active() const { return state == RunState::Running || state == RunState::Overtime; }
     [[nodiscard]] uint64 TotalMs() const { return elapsedMs + PenaltyMs(deaths); }
