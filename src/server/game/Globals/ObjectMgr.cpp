@@ -3936,6 +3936,19 @@ ItemTemplate const* ObjectMgr::GetItemTemplate(uint32 entry)
     return entry < _itemTemplateStoreFast.size() ? _itemTemplateStoreFast[entry] : nullptr;
 }
 
+ItemTemplate const* ObjectMgr::AddRuntimeItemTemplate(ItemTemplate const& itemTemplate)
+{
+    auto const [itr, inserted] = _itemTemplateStore.emplace(itemTemplate.ItemId, itemTemplate);
+    if (!inserted)
+        return nullptr;
+
+    // The container is node-based, so the pointers the fast lookup already holds stay valid.
+    if (itemTemplate.ItemId >= _itemTemplateStoreFast.size())
+        _itemTemplateStoreFast.resize(itemTemplate.ItemId + 1, nullptr);
+    _itemTemplateStoreFast[itemTemplate.ItemId] = &itr->second;
+    return &itr->second;
+}
+
 void ObjectMgr::LoadItemSetNameLocales()
 {
     uint32 oldMSTime = getMSTime();
