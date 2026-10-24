@@ -18,7 +18,7 @@ INSERT INTO `creature_template_model` (`CreatureID`, `Idx`, `CreatureDisplayID`,
 -- Type 2 so a click reaches the script's gossip hook; the Titan Relic and the Champion's Cache looks
 DELETE FROM `gameobject_template` WHERE `entry` BETWEEN 990920 AND 990921;
 INSERT INTO `gameobject_template` (`entry`, `type`, `displayId`, `name`, `IconName`, `castBarCaption`, `unk1`, `size`, `ScriptName`, `VerifiedBuild`) VALUES
-(990920, 2, 7967, 'Font of Power', '', '', '', 1, 'go_mythic_font_of_power', 0),
+(990920, 2, 7951, 'Font of Power', '', '', '', 0.8, 'go_mythic_font_of_power', 0),
 (990921, 2, 9069, 'Mythic Cache', '', '', '', 1.5, 'go_mythic_cache', 0);
 
 -- Beside the emblem quartermasters: the Silver Enclave and Sunreaver's Sanctuary
