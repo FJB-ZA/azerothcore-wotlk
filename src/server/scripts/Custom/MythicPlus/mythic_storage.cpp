@@ -7,7 +7,10 @@
  * option) any later version.
  */
 
+#include <algorithm>
+#include <map>
 #include <string>
+#include <vector>
 
 #include "Chat.h"
 #include "DatabaseEnv.h"
@@ -19,8 +22,9 @@
 #include "ScriptMgr.h"
 #include "WorldSession.h"
 
-// Mythic+ character data (characters SQL 2026_10_24_00_mythic_plus.sql), bots' as well as players': the keystone,
-// crests, weekly runs for the vault and best runs. Loaded at login and kept on the player; changes are written at once.
+// Mythic+ character data (characters SQL 2026_10_24_00_mythic_plus.sql and _01_mythic_plus_valor.sql), bots' as well
+// as players': the keystone, crests, Valorstones, weekly runs for the vault and the tab, and best runs. Loaded at login
+// and kept on the player; changes are written at once.
 namespace MythicPlus
 {
 namespace
@@ -33,8 +37,23 @@ struct PlayerMythicData : public DataMap::Base
     Keystone key;
     CrestWallet owned{};
     CrestWallet earned{};
+    // The week `earned` and `weekRuns` belong to
     uint32 earnedWeek = 0;
+    uint32 valor = 0;
+    std::vector<RunRecord> weekRuns;
+    std::map<uint16, RunRecord> best;
 };
+
+RunRecord ReadRun(Field* fields)
+{
+    return RunRecord{fields[0].Get<uint16>(), fields[1].Get<uint8>(), fields[2].Get<uint32>(), fields[3].Get<uint8>()};
+}
+
+// A higher key, or the same key faster, is the better run
+bool Beats(RunRecord const& run, RunRecord const& best)
+{
+    return run.level > best.level || (run.level == best.level && run.seconds < best.seconds);
+}
 
 uint32 CurrentWeek()
 {
@@ -65,6 +84,25 @@ void Load(Player* player, PlayerMythicData* data)
                 data->earned[tier - 1] = fields[3].Get<uint32>();
         } while (result->NextRow());
     }
+    if (QueryResult result = CharacterDatabase.Query("SELECT amount FROM mythic_plus_valor WHERE guid = {}", guid))
+        data->valor = result->Fetch()[0].Get<uint32>();
+    if (QueryResult result = CharacterDatabase.Query("SELECT map, level, seconds, upgrade FROM mythic_plus_runs "
+                                                     "WHERE guid = {} AND week = {} ORDER BY completed",
+                                                     guid, week))
+    {
+        do
+            data->weekRuns.push_back(ReadRun(result->Fetch()));
+        while (result->NextRow());
+    }
+    if (QueryResult result =
+            CharacterDatabase.Query("SELECT map, level, seconds, upgrade FROM mythic_plus_best WHERE guid = {}", guid))
+    {
+        do
+        {
+            RunRecord const run = ReadRun(result->Fetch());
+            data->best[run.map] = run;
+        } while (result->NextRow());
+    }
     data->earnedWeek = week;
     data->loaded = true;
 }
@@ -74,10 +112,11 @@ PlayerMythicData* DataOf(Player* player)
     PlayerMythicData* data = player->CustomData.GetDefault<PlayerMythicData>(DataKey);
     if (!data->loaded)
         Load(player, data);
-    // The weekly cap starts over at the reset
+    // The weekly cap and the week's run list start over at the reset
     if (uint32 const week = CurrentWeek(); data->earnedWeek != week)
     {
         data->earned = {};
+        data->weekRuns.clear();
         data->earnedWeek = week;
     }
     return data;
@@ -174,6 +213,15 @@ void RecordRun(Player* player, uint16 map, uint8 level, uint32 seconds, uint8 up
 {
     uint32 const guid = player->GetGUID().GetCounter();
     uint32 const week = CurrentWeek();
+    uint32 const now = uint32(GameTime::GetGameTime().count());
+    PlayerMythicData* data = DataOf(player);
+    RunRecord const run{map, level, seconds, upgrade};
+    data->weekRuns.push_back(run);
+    if (auto const itr = data->best.find(map); itr == data->best.end() || Beats(run, itr->second))
+        data->best[map] = run;
+    CharacterDatabase.Execute("INSERT IGNORE INTO mythic_plus_runs (guid, week, completed, map, level, seconds, upgrade) "
+                              "VALUES ({}, {}, {}, {}, {}, {}, {})",
+                              guid, week, now, map, level, seconds, upgrade);
     CharacterDatabase.Execute("INSERT INTO mythic_plus_week (guid, week, runs, best_level, vault_claimed) VALUES "
                               "({}, {}, 1, {}, 0) ON DUPLICATE KEY UPDATE runs = runs + 1, "
                               "best_level = GREATEST(best_level, VALUES(best_level))",
@@ -192,7 +240,8 @@ void RecordRun(Player* player, uint16 map, uint8 level, uint32 seconds, uint8 up
         "completed = IF(VALUES(level) > level OR (VALUES(level) = level AND VALUES(seconds) = seconds), "
         "VALUES(completed), completed), "
         "level = GREATEST(level, VALUES(level))",
-        guid, map, level, seconds, upgrade, uint32(GameTime::GetGameTime().count()));
+        guid, map, level, seconds, upgrade, now);
+    SendHistory(player);
 }
 
 std::optional<VaultReward> PendingVault(Player* player)
@@ -224,6 +273,65 @@ void ClaimVault(Player* player, uint32 week)
 {
     CharacterDatabase.Execute("UPDATE mythic_plus_week SET vault_claimed = 1 WHERE guid = {} AND week = {}",
                               player->GetGUID().GetCounter(), week);
+    SendVault(player);
+}
+
+uint32 Valorstones(Player* player)
+{
+    return DataOf(player)->valor;
+}
+
+namespace
+{
+void SaveValor(Player* player, PlayerMythicData const* data)
+{
+    CharacterDatabase.Execute("REPLACE INTO mythic_plus_valor (guid, amount) VALUES ({}, {})",
+                              player->GetGUID().GetCounter(), data->valor);
+    SendValor(player);
+}
+}
+
+void AddValorstones(Player* player, uint32 amount)
+{
+    if (!amount)
+        return;
+    PlayerMythicData* data = DataOf(player);
+    data->valor += amount;
+    SaveValor(player, data);
+    ChatHandler(player->GetSession())
+        .SendSysMessage("You receive " + std::to_string(amount) + " Valorstones (" + std::to_string(data->valor) +
+                        " now).");
+}
+
+bool SpendValorstones(Player* player, uint32 amount)
+{
+    PlayerMythicData* data = DataOf(player);
+    if (data->valor < amount)
+        return false;
+    data->valor -= amount;
+    SaveValor(player, data);
+    return true;
+}
+
+std::vector<RunRecord> const& WeekRuns(Player* player)
+{
+    return DataOf(player)->weekRuns;
+}
+
+std::vector<RunRecord> BestRuns(Player* player)
+{
+    std::vector<RunRecord> runs;
+    for (auto const& [map, run] : DataOf(player)->best)
+        runs.push_back(run);
+    return runs;
+}
+
+uint8 BestKeyLevel(Player* player)
+{
+    uint8 best = 0;
+    for (auto const& [map, run] : DataOf(player)->best)
+        best = std::max(best, run.level);
+    return best;
 }
 }
 
@@ -257,6 +365,8 @@ public:
         CharacterDatabase.Execute("DELETE FROM mythic_plus_week WHERE guid = {}", counter);
         CharacterDatabase.Execute("DELETE FROM mythic_plus_week_maps WHERE guid = {}", counter);
         CharacterDatabase.Execute("DELETE FROM mythic_plus_best WHERE guid = {}", counter);
+        CharacterDatabase.Execute("DELETE FROM mythic_plus_valor WHERE guid = {}", counter);
+        CharacterDatabase.Execute("DELETE FROM mythic_plus_runs WHERE guid = {}", counter);
     }
 };
 

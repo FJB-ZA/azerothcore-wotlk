@@ -191,13 +191,14 @@ void ScheduleBotForge(Player* bot, uint8 triesLeft)
     }, BotForgeDelay);
 }
 
-// One cache roll per participant; returns why it gave nothing, or empty
+// One cache opening per participant: Valorstones always, then the item roll; returns why it gave no item, or empty
 std::string RollCache(Player* player, MythicRun& run, uint16 map)
 {
     if (!run.participants.count(player->GetGUID()))
         return "Only those who started the run can open the cache.";
     if (!run.looted.insert(player->GetGUID()).second)
         return "You have already opened this cache.";
+    AddValorstones(player, ValorForRun(run.level, run.upgrade > 0));
     if (urand(1, 100) > ChestItemChancePercent(run.upgrade > 0))
         return "The cache held nothing for you this time.";
     uint32 const item = RollItem(player, map);

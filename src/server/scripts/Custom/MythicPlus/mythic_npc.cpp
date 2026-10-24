@@ -29,13 +29,16 @@
 #include "WorldSession.h"
 
 // npc_mythic_plus, the Keystone Master in the Dalaran emblem rooms: teleports the group to a dungeon one of them,
-// bots included, holds a key for, hands out a first key, opens last week's vault and runs the Crest Forge.
+// bots included, holds a key for, hands out a first key, opens last week's vault, runs the Crest Forge (ranks and
+// sockets) and trades Valorstones for crests.
 namespace
 {
 using namespace MythicPlus;
 
 constexpr uint32 MainSender = GOSSIP_SENDER_MAIN + 43;
 constexpr uint32 ForgeSender = GOSSIP_SENDER_MAIN + 44;
+constexpr uint32 SocketSender = GOSSIP_SENDER_MAIN + 45;
+constexpr uint32 ShopSender = GOSSIP_SENDER_MAIN + 46;
 enum MainAction : uint32
 {
     ActionStarterKey = 1,
@@ -43,6 +46,7 @@ enum MainAction : uint32
     ActionForge = 3,
     ActionAffixes = 4,
     ActionCrests = 5,
+    ActionShop = 6,
     // Plus the dungeon's map id
     ActionTeleport = 1000
 };
@@ -181,16 +185,38 @@ uint32 ForgeAction(uint8 bag, uint8 slot)
 
 void AddForgeItem(Player* player, Item* item, uint8 bag, uint8 slot, uint32& offered)
 {
-    if (!item || offered >= MaxForgeOptions || !IsMythicItem(item->GetEntry()))
-        return;
-    std::string const cost = UpgradeCostText(item->GetEntry());
-    if (cost.empty())
+    if (!item || !IsMythicItem(item->GetEntry()))
         return;
     std::optional<RankRef> const ref = DecodeRankId(item->GetEntry());
     std::string const name = item->GetTemplate()->Name1 + " (Mythic " + std::to_string(ref->rank) + ")";
-    AddGossipItemFor(player, GOSSIP_ICON_INTERACT_1, name + " to " + cost, ForgeSender, ForgeAction(bag, slot),
-                     "Upgrade " + name + " to " + cost + "?", 0, false);
-    ++offered;
+    if (std::string const cost = UpgradeCostText(item->GetEntry()); !cost.empty() && offered < MaxForgeOptions)
+    {
+        AddGossipItemFor(player, GOSSIP_ICON_INTERACT_1, name + " to " + cost, ForgeSender, ForgeAction(bag, slot),
+                         "Upgrade " + name + " to " + cost + "?", 0, false);
+        ++offered;
+    }
+    if (std::string const cost = SocketCostText(item); !cost.empty() && offered < MaxForgeOptions)
+    {
+        AddGossipItemFor(player, GOSSIP_ICON_INTERACT_2, name + ": " + cost, SocketSender, ForgeAction(bag, slot),
+                         "Add " + cost + " to " + name + "?", 0, false);
+        ++offered;
+    }
+}
+
+void ShowShop(Player* player, Creature* master)
+{
+    ClearGossipMenuFor(player);
+    for (uint8 tier = 1; tier <= CrestTiers; ++tier)
+    {
+        Crest const crest = Crest(tier);
+        AddGossipItemFor(player, GOSSIP_ICON_VENDOR, std::to_string(CrestBundle) + " " + CrestName(crest) +
+                                                         " Crests for " + std::to_string(CrestBundlePrice(crest)) +
+                                                         " Valorstones",
+                         ShopSender, tier);
+    }
+    ChatHandler(player->GetSession())
+        .SendSysMessage("You have " + std::to_string(Valorstones(player)) + " Valorstones.");
+    SendGossipMenuFor(player, DEFAULT_GOSSIP_MESSAGE, master->GetGUID());
 }
 
 void ShowForge(Player* player, Creature* master)
@@ -206,7 +232,7 @@ void ShowForge(Player* player, Creature* master)
             for (uint32 slot = 0; slot < bag->GetBagSize(); ++slot)
                 AddForgeItem(player, bag->GetItemByPos(uint8(slot)), bagSlot, uint8(slot), offered);
     if (!offered)
-        ChatHandler(player->GetSession()).SendNotification("You carry no Mythic+ item that can go higher.");
+        ChatHandler(player->GetSession()).SendNotification("You carry no Mythic+ item to upgrade or socket.");
     SendGossipMenuFor(player, DEFAULT_GOSSIP_MESSAGE, master->GetGUID());
 }
 }
@@ -226,8 +252,9 @@ public:
             AddGossipItemFor(player, GOSSIP_ICON_MONEY_BAG, "Open the Great Vault (last week's best: +" +
                                                                 std::to_string(reward->bestLevel) + ").",
                              MainSender, ActionVault);
-        AddGossipItemFor(player, GOSSIP_ICON_INTERACT_1, "Upgrade my Mythic+ gear with crests.", MainSender,
+        AddGossipItemFor(player, GOSSIP_ICON_INTERACT_1, "Upgrade or socket my Mythic+ gear.", MainSender,
                          ActionForge);
+        AddGossipItemFor(player, GOSSIP_ICON_VENDOR, "Trade Valorstones for crests.", MainSender, ActionShop);
         AddGossipItemFor(player, GOSSIP_ICON_CHAT, "What are this week's affixes?", MainSender, ActionAffixes);
         AddGossipItemFor(player, GOSSIP_ICON_CHAT, "How many crests do I have?", MainSender, ActionCrests);
         SendGossipMenuFor(player, DEFAULT_GOSSIP_MESSAGE, creature->GetGUID());
@@ -236,12 +263,22 @@ public:
 
     bool OnGossipSelect(Player* player, Creature* creature, uint32 sender, uint32 action) override
     {
-        if (sender == ForgeSender)
+        if (sender == ForgeSender || sender == SocketSender)
         {
-            std::string const reason = UpgradeItem(player, uint8(action >> 8), uint8(action & 0xFF));
+            uint8 const bag = uint8(action >> 8);
+            uint8 const slot = uint8(action & 0xFF);
+            std::string const reason =
+                sender == ForgeSender ? UpgradeItem(player, bag, slot) : AddSocket(player, bag, slot);
             if (!reason.empty())
                 ChatHandler(player->GetSession()).SendNotification(reason);
             ShowForge(player, creature);
+            return true;
+        }
+        if (sender == ShopSender)
+        {
+            if (std::string const reason = BuyCrests(player, Crest(action)); !reason.empty())
+                ChatHandler(player->GetSession()).SendNotification(reason);
+            ShowShop(player, creature);
             return true;
         }
         if (sender != MainSender)
@@ -253,6 +290,9 @@ public:
         {
             case ActionForge:
                 ShowForge(player, creature);
+                return true;
+            case ActionShop:
+                ShowShop(player, creature);
                 return true;
             case ActionStarterKey:
                 GiveStarterKey(player);

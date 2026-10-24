@@ -8,6 +8,7 @@
  */
 
 #include <string>
+#include <vector>
 
 #include "Chat.h"
 #include "GameTime.h"
@@ -18,8 +19,9 @@
 #include "WorldPacket.h"
 #include "WorldSession.h"
 
-// Mythic+ addon messages (MythicProtocolPolicy.h): the keystone, crests and week at login and on request, the run
-// every second inside a run, and the result at the end. The addon's Crest Forge asks for upgrades the same way.
+// Mythic+ addon messages (MythicProtocolPolicy.h): the keystone, crests, Valorstones, week, run history and vault at
+// login and on request, the run every second inside a run, and the result at the end. The addon's Crest Forge asks
+// for upgrades, sockets and crests the same way.
 namespace MythicPlus
 {
 namespace
@@ -41,6 +43,9 @@ void SendAll(Player* player)
     SendKeystone(player);
     SendCrests(player);
     SendWeek(player);
+    SendValor(player);
+    SendHistory(player);
+    SendVault(player);
     if (MythicRun* run = FindRun(player->GetMap()))
         SendRun(player, *run);
 }
@@ -84,6 +89,29 @@ void SendResult(Player* player, MythicRun const& run, Keystone const& newKey, Cr
     SendToClient(player, FormatResult(run.dungeon ? run.dungeon->map : 0, run.level, uint32(run.finalMs / 1000),
                                       run.upgrade, newKey.map, newKey.level, crest, crests));
 }
+
+void SendValor(Player* player)
+{
+    SendToClient(player, FormatValor(Valorstones(player), CrestForKeyLevel(BestKeyLevel(player))));
+}
+
+void SendHistory(Player* player)
+{
+    if (IsBot(player))
+        return;
+    std::vector<RunRecord> const& runs = WeekRuns(player);
+    SendToClient(player, FormatWeekRunCount(runs.size()));
+    for (RunRecord const& run : runs)
+        SendToClient(player, FormatWeekRun(run));
+    for (RunRecord const& run : BestRuns(player))
+        SendToClient(player, FormatBestRun(run));
+}
+
+void SendVault(Player* player)
+{
+    if (!IsBot(player))
+        SendToClient(player, FormatVault(PendingVault(player).has_value()));
+}
 }
 
 using namespace MythicPlus;
@@ -102,7 +130,7 @@ public:
             SendAll(player);
     }
 
-    // "SoloWowMythic\tQ" asks for everything; "SoloWowMythic\tU <bag> <slot>" upgrades an item at the Keystone Master
+    // "SoloWowMythic\tQ" asks for everything; U upgrades an item, S sockets it and P buys crests, at the Keystone Master
     bool OnPlayerCanUseChat(Player* player, uint32 type, uint32 language, std::string& msg, Player* receiver) override
     {
         std::string const prefix = std::string(AddonPrefix) + '\t';
@@ -111,15 +139,26 @@ public:
 
         std::string_view const body = std::string_view(msg).substr(prefix.size());
         if (IsQuery(body))
-            SendAll(player);
-        else if (std::optional<UpgradeRequest> const request = ParseUpgrade(body))
         {
-            ChatHandler handler(player->GetSession());
-            if (!player->FindNearestCreature(KeystoneMasterEntry, ForgeRange))
-                handler.SendNotification("Visit the Keystone Master in Dalaran to upgrade items.");
-            else if (std::string const reason = UpgradeItem(player, request->bag, request->slot); !reason.empty())
-                handler.SendNotification(reason);
+            SendAll(player);
+            return false;
         }
+        std::optional<UpgradeRequest> const upgrade = ParseUpgrade(body);
+        std::optional<UpgradeRequest> const socket = ParseSocket(body);
+        std::optional<Crest> const crest = ParseCrestPurchase(body);
+        if (!upgrade && !socket && !crest)
+            return false;
+        std::string reason;
+        if (!player->FindNearestCreature(KeystoneMasterEntry, ForgeRange))
+            reason = "Visit the Keystone Master in Dalaran to do that.";
+        else if (upgrade)
+            reason = UpgradeItem(player, upgrade->bag, upgrade->slot);
+        else if (socket)
+            reason = AddSocket(player, socket->bag, socket->slot);
+        else
+            reason = BuyCrests(player, *crest);
+        if (!reason.empty())
+            ChatHandler(player->GetSession()).SendNotification(reason);
         return false;
     }
 };

@@ -10,6 +10,7 @@
 #ifndef _MYTHIC_PLUS_H
 #define _MYTHIC_PLUS_H
 
+#include <array>
 #include <optional>
 #include <set>
 #include <string>
@@ -22,10 +23,13 @@
 #include "MythicCrestPolicy.h"
 #include "MythicDungeonTable.h"
 #include "MythicKeystonePolicy.h"
+#include "MythicProtocolPolicy.h"
+#include "MythicValorPolicy.h"
 #include "ObjectGuid.h"
 #include "Position.h"
 
 class Creature;
+class Item;
 class Map;
 class Player;
 class Unit;
@@ -43,6 +47,10 @@ inline constexpr uint32 RuneEntry = 990923;
 inline constexpr uint32 FontOfPowerEntry = 990920;
 inline constexpr uint32 CacheEntry = 990921;
 inline constexpr uint32 KeystoneItem = 990300;
+// Crafted by Blacksmiths (spell 990314); the forge takes one per socket
+inline constexpr uint32 SocketKitItem = 990301;
+// Prismatic socket enchants by how many sockets they add: Socket Staff, then two of solo-wow's spell data
+inline constexpr std::array<uint32, MaxSockets + 1> PrismaticSocketEnchants = {0, 3848, 3990, 3991};
 
 // Spells (solo-wow patches/client/spell-data/40-mythic-plus.json)
 inline constexpr uint32 SpellShatteringGround = 990300;
@@ -159,6 +167,15 @@ struct VaultReward
 // The newest finished week with runs whose vault is still closed
 std::optional<VaultReward> PendingVault(Player* player);
 void ClaimVault(Player* player, uint32 week);
+uint32 Valorstones(Player* player);
+void AddValorstones(Player* player, uint32 amount);
+// False, and nothing spent, when the player has fewer
+bool SpendValorstones(Player* player, uint32 amount);
+// This week's finished runs, oldest first
+std::vector<RunRecord> const& WeekRuns(Player* player);
+// The best run ever in each dungeon
+std::vector<RunRecord> BestRuns(Player* player);
+uint8 BestKeyLevel(Player* player);
 
 // mythic_items.cpp
 bool IsMythicItem(uint32 itemId);
@@ -175,6 +192,12 @@ std::string UpgradeCostText(uint32 itemId);
 std::string OpenVault(Player* player);
 // What a bot does at the forge: raises its equipped Mythic+ items, lowest rank first, while its crests pay
 void SpendCrestsOnGear(Player* player);
+// Adds one prismatic socket to the Mythic+ item at bag/slot for Valorstones; returns why it didn't, or empty
+std::string AddSocket(Player* player, uint8 bag, uint8 slot);
+// The next socket's price for the forge's text: empty when the item can't take another
+std::string SocketCostText(Item* item);
+// One bundle of crests for Valorstones; returns why it didn't, or empty
+std::string BuyCrests(Player* player, Crest crest);
 
 // mythic_addon.cpp
 void SendKeystone(Player* player);
@@ -182,6 +205,10 @@ void SendCrests(Player* player);
 void SendWeek(Player* player);
 void SendRun(Player* player, MythicRun const& run);
 void SendResult(Player* player, MythicRun const& run, Keystone const& newKey, Crest crest, uint32 crests);
+void SendValor(Player* player);
+// This week's runs and the best run per dungeon, for the Mythic+ Dungeons tab
+void SendHistory(Player* player);
+void SendVault(Player* player);
 }
 
 #endif

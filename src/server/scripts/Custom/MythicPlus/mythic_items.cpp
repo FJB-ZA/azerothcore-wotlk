@@ -13,6 +13,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "Chat.h"
 #include "Containers.h"
 #include "DatabaseEnv.h"
 #include "Item.h"
@@ -27,7 +28,8 @@
 
 // Mythic+ items: every row of mythic_plus_item gets 17 generated templates, Mythic 0 to Mythic 16, built in memory
 // from the real item at start-up (MythicItemPolicy.h). The cache and the vault hand out Mythic 0; crests raise the
-// rank at the Keystone Master, keeping enchants, gems and binding.
+// rank at the Keystone Master, keeping enchants, gems and binding. A Blacksmith's Prismatic Socket Kit and
+// Valorstones add prismatic sockets as a per-item enchant (MythicValorPolicy.h), so no extra templates are needed.
 namespace MythicPlus
 {
 namespace
@@ -163,10 +165,26 @@ ItemState SaveState(Item* item)
     return state;
 }
 
+uint8 OwnSockets(ItemTemplate const* proto)
+{
+    uint8 sockets = 0;
+    for (uint8 i = 0; i < MAX_ITEM_PROTO_SOCKETS; ++i)
+        if (proto->Socket[i].Color)
+            ++sockets;
+    return sockets;
+}
+
+bool TakesSocket(Item* item)
+{
+    return CanAddSocket(item->GetTemplate()->InventoryType, OwnSockets(item->GetTemplate()),
+                        item->GetPrismaticSocketCount());
+}
+
 void RestoreState(Item* item, ItemState const& state)
 {
     if (state.randomProperty)
         item->SetItemRandomProperties(state.randomProperty);
+    // Every slot, so added prismatic sockets, their gems and the socket bonus survive an upgrade
     for (uint8 slot = 0; slot < MAX_ENCHANTMENT_SLOT; ++slot)
         if (state.enchants[slot][0])
             item->SetEnchantment(EnchantmentSlot(slot), state.enchants[slot][0], state.enchants[slot][1],
@@ -280,6 +298,57 @@ std::string UpgradeCostText(uint32 itemId)
     uint8 const rank = uint8(ref->rank + 1);
     return "Mythic " + std::to_string(rank) + " (item level " + std::to_string(ItemLevelForRank(rank)) + "): " +
            std::to_string(CrestsPerRank) + " " + CrestName(CrestForRank(rank)) + " Crests";
+}
+
+std::string AddSocket(Player* player, uint8 bag, uint8 slot)
+{
+    Item* item = player->GetItemByPos(bag, slot);
+    if (!item || !IsMythicItem(item->GetEntry()))
+        return "Only Mythic+ items take sockets here.";
+    if (player->IsInCombat())
+        return "You can't add sockets in combat.";
+    if (item->IsInTrade())
+        return "That item can't take a socket right now.";
+    if (!TakesSocket(item))
+        return "This item already has the sockets its Icecrown Citadel 25 equal has.";
+    uint8 const prismatic = item->GetPrismaticSocketCount();
+    uint32 const price = SocketPrice(prismatic);
+    if (!player->HasItemCount(SocketKitItem, 1))
+        return "A socket needs a Prismatic Socket Kit. Blacksmiths make them, and the auction house sells them.";
+    if (!SpendValorstones(player, price))
+        return "The next socket costs " + std::to_string(price) + " Valorstones and a Prismatic Socket Kit.";
+    player->DestroyItemCount(SocketKitItem, 1, true);
+    player->ApplyEnchantment(item, PRISMATIC_ENCHANTMENT_SLOT, false);
+    item->SetEnchantment(PRISMATIC_ENCHANTMENT_SLOT, PrismaticSocketEnchants[prismatic + 1], 0, 0, player->GetGUID());
+    player->ApplyEnchantment(item, PRISMATIC_ENCHANTMENT_SLOT, true);
+    ChatHandler(player->GetSession())
+        .SendSysMessage(item->GetTemplate()->Name1 + " now has " + std::to_string(prismatic + 1) +
+                        " prismatic socket" + (prismatic ? "s." : "."));
+    return {};
+}
+
+std::string SocketCostText(Item* item)
+{
+    if (!item || !IsMythicItem(item->GetEntry()) || !TakesSocket(item))
+        return {};
+    return "a prismatic socket: a Prismatic Socket Kit and " +
+           std::to_string(SocketPrice(item->GetPrismaticSocketCount())) + " Valorstones";
+}
+
+std::string BuyCrests(Player* player, Crest crest)
+{
+    std::string const name = std::string(CrestName(crest)) + " Crests";
+    if (!CanBuyCrest(crest, BestKeyLevel(player)))
+        return "Finish a +" + std::to_string(KeyLevelForCrest(crest)) + " keystone to buy " + name + ".";
+    uint32 const earned = EarnedThisWeek(player)[uint8(crest) - 1];
+    if (!BundleFitsWeek(earned))
+        return "You can earn only " + std::to_string(CappedAward(CrestBundle, earned)) + " more " + name +
+               " this week.";
+    uint32 const price = CrestBundlePrice(crest);
+    if (!SpendValorstones(player, price))
+        return std::to_string(CrestBundle) + " " + name + " cost " + std::to_string(price) + " Valorstones.";
+    AwardCrests(player, crest, CrestBundle);
+    return {};
 }
 
 std::string OpenVault(Player* player)

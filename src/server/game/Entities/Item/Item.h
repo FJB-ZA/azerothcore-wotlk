@@ -268,6 +268,8 @@ public:
     bool IsFitToSpellRequirements(SpellInfo const* spellInfo) const;
     [[nodiscard]] bool IsLimitedToAnotherMapOrZone(uint32 cur_mapId, uint32 cur_zoneId) const;
     [[nodiscard]] bool GemsFitSockets() const;
+    // Uncolored sockets the prismatic enchant adds after the template's own, as the client counts them
+    [[nodiscard]] uint8 GetPrismaticSocketCount() const;
 
     [[nodiscard]] uint32 GetCount() const { return GetUInt32Value(ITEM_FIELD_STACK_COUNT); }
     void SetCount(uint32 value) { SetUInt32Value(ITEM_FIELD_STACK_COUNT, value); }

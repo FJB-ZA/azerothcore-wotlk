@@ -11,6 +11,7 @@
 #define _MYTHIC_PROTOCOL_POLICY_H
 
 #include <charconv>
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -83,10 +84,74 @@ inline std::string FormatResult(uint32_t map, uint8_t level, uint32_t seconds, u
            std::to_string(uint32_t(crest)) + ' ' + std::to_string(crests);
 }
 
+// "V1 <valorstones> <highest crest tier they buy, 0 none>"
+inline std::string FormatValor(uint32_t valor, Crest buyable)
+{
+    return "V1 " + std::to_string(valor) + ' ' + std::to_string(uint32_t(buyable));
+}
+
+// One finished run: "<map> <level> <seconds> <upgrade 0-3>"
+struct RunRecord
+{
+    uint16_t map = 0;
+    uint8_t level = 0;
+    uint32_t seconds = 0;
+    uint8_t upgrade = 0;
+};
+
+inline std::string RunFields(RunRecord const& run)
+{
+    return std::to_string(run.map) + ' ' + std::to_string(run.level) + ' ' + std::to_string(run.seconds) + ' ' +
+           std::to_string(run.upgrade);
+}
+
+// "H1 <count>" starts this week's run list, then one "H2 <run>" per run
+inline std::string FormatWeekRunCount(std::size_t count)
+{
+    return "H1 " + std::to_string(count);
+}
+
+inline std::string FormatWeekRun(RunRecord const& run)
+{
+    return "H2 " + RunFields(run);
+}
+
+// "B1 <run>": the best run ever in that dungeon
+inline std::string FormatBestRun(RunRecord const& run)
+{
+    return "B1 " + RunFields(run);
+}
+
+// "G1 <1 when last week's vault waits at the Keystone Master>"
+inline std::string FormatVault(bool ready)
+{
+    return ready ? "G1 1" : "G1 0";
+}
+
 // Client to server: "Q" asks for everything again
 constexpr bool IsQuery(std::string_view body)
 {
     return body == "Q";
+}
+
+inline std::optional<unsigned> ParseNumber(std::string_view text)
+{
+    unsigned value = 0;
+    auto const [end, error] = std::from_chars(text.data(), text.data() + text.size(), value);
+    if (text.empty() || error != std::errc() || end != text.data() + text.size())
+        return std::nullopt;
+    return value;
+}
+
+// Client to server: "P <crest tier>" buys one bundle of crests with Valorstones
+inline std::optional<Crest> ParseCrestPurchase(std::string_view body)
+{
+    if (body.size() < 3 || body.substr(0, 2) != "P ")
+        return std::nullopt;
+    std::optional<unsigned> const tier = ParseNumber(body.substr(2));
+    if (!tier || *tier < 1 || *tier > CrestTiers)
+        return std::nullopt;
+    return Crest(*tier);
 }
 
 struct UpgradeRequest
@@ -95,25 +160,32 @@ struct UpgradeRequest
     uint8_t slot;
 };
 
-// Client to server: "U <bag> <slot>" upgrades the item there by one rank, in the inventory's own bag and slot numbers
-inline std::optional<UpgradeRequest> ParseUpgrade(std::string_view body)
+// Client to server: "<verb> <bag> <slot>" for the item there, in the inventory's own bag and slot numbers
+inline std::optional<UpgradeRequest> ParseItemRequest(std::string_view body, char verb)
 {
-    if (body.size() < 5 || body.substr(0, 2) != "U ")
+    if (body.size() < 5 || body[0] != verb || body[1] != ' ')
         return std::nullopt;
     std::string_view rest = body.substr(2);
     std::size_t const space = rest.find(' ');
     if (space == std::string_view::npos)
         return std::nullopt;
-    unsigned bag = 0;
-    unsigned slot = 0;
-    std::string_view const bagText = rest.substr(0, space);
-    std::string_view const slotText = rest.substr(space + 1);
-    auto const [bagEnd, bagError] = std::from_chars(bagText.data(), bagText.data() + bagText.size(), bag);
-    auto const [slotEnd, slotError] = std::from_chars(slotText.data(), slotText.data() + slotText.size(), slot);
-    if (bagError != std::errc() || slotError != std::errc() || bagEnd != bagText.data() + bagText.size() ||
-        slotEnd != slotText.data() + slotText.size() || bag > 255 || slot > 255)
+    std::optional<unsigned> const bag = ParseNumber(rest.substr(0, space));
+    std::optional<unsigned> const slot = ParseNumber(rest.substr(space + 1));
+    if (!bag || !slot || *bag > 255 || *slot > 255)
         return std::nullopt;
-    return UpgradeRequest{uint8_t(bag), uint8_t(slot)};
+    return UpgradeRequest{uint8_t(*bag), uint8_t(*slot)};
+}
+
+// "U <bag> <slot>" raises the item one rank
+inline std::optional<UpgradeRequest> ParseUpgrade(std::string_view body)
+{
+    return ParseItemRequest(body, 'U');
+}
+
+// "S <bag> <slot>" adds a prismatic socket
+inline std::optional<UpgradeRequest> ParseSocket(std::string_view body)
+{
+    return ParseItemRequest(body, 'S');
 }
 }
 
