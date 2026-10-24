@@ -123,6 +123,13 @@ inline constexpr uint32_t QuakingIntervalMs = 20000;
 inline constexpr float QuakingRadius = 5.0f;
 // Bursting and Bolstering reach this far from the dying enemy
 inline constexpr float DeathEffectRadius = 30.0f;
+// Affix damage at +2, grown with the key like boss mechanics (MythicMechanicPolicy.h ScaledDamage)
+inline constexpr uint32_t BurstingTickDamage = 800;
+inline constexpr uint32_t SanguineTickDamage = 1500;
+inline constexpr uint32_t VolcanicDamage = 5000;
+inline constexpr uint32_t QuakeDamage = 3000;
+// Explosive orbs detonate this long after they appear
+inline constexpr uint32_t ExplosiveFuseMs = 6000;
 }
 
 #endif

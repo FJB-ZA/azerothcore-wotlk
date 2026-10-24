@@ -99,6 +99,11 @@ constexpr Crest PayForRank(CrestWallet& wallet, uint8_t rank)
     }
     return Crest::None;
 }
+
+constexpr bool CanAfford(CrestWallet wallet, uint8_t rank)
+{
+    return PayForRank(wallet, rank) != Crest::None;
+}
 }
 
 #endif
