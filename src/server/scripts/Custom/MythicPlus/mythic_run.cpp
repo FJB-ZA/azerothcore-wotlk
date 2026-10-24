@@ -241,9 +241,12 @@ void MoveCheckpoint(Creature* boss, MythicRun& run)
         if (!nearest || boss->GetExactDist(player) < boss->GetExactDist(nearest))
             nearest = player;
     });
-    if (nearest)
-        run.checkpoint.Relocate(nearest->GetPositionX(), nearest->GetPositionY(), nearest->GetPositionZ(),
-                                nearest->GetOrientation());
+    if (!nearest)
+        return;
+    run.checkpoint.Relocate(nearest->GetPositionX(), nearest->GetPositionY(), nearest->GetPositionZ(),
+                            nearest->GetOrientation());
+    Announce(boss->GetMap(), "Checkpoint: if you release, you come back here, where " + boss->GetName() + " fell.",
+             false);
 }
 
 // A whole group of bots, alone in the dungeon, alive and out of combat; the leader's key goes first
