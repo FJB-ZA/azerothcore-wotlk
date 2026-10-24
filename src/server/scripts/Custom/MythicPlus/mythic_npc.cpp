@@ -47,7 +47,6 @@ enum MainAction : uint32
     ActionTeleport = 1000
 };
 constexpr float BringRange = 30.0f;
-constexpr uint8 HeroicLevel = 80;
 constexpr uint32 MaxForgeOptions = GOSSIP_MAX_MENU_ITEMS - 1;
 
 std::string DungeonName(uint16 map)

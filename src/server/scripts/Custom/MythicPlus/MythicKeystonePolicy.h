@@ -18,6 +18,8 @@
 // the death penalty, enemy forces and what the key becomes after a run.
 namespace MythicPlus
 {
+// Keys and the Keystone Master's errands start at the heroic level
+inline constexpr uint8_t HeroicLevel = 80;
 inline constexpr uint8_t MinKeyLevel = 2;
 inline constexpr uint8_t MaxKeyLevel = 30;
 inline constexpr uint32_t CountdownMs = 10000;

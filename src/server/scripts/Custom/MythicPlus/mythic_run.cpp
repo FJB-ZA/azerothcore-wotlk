@@ -43,6 +43,13 @@ constexpr uint32 FontSender = GOSSIP_SENDER_MAIN + 41;
 constexpr uint32 CacheLifeSeconds = 2 * 3600;
 constexpr Milliseconds BotForgeDelay = 5s;
 constexpr uint8 BotForgeTries = 12;
+constexpr char const* BotStartKey = "MythicPlusBotStart";
+constexpr uint32 BotStartCheckMs = 2000;
+
+struct BotStartTimer : public DataMap::Base
+{
+    uint32 ms = 0;
+};
 
 void Announce(Map* map, std::string const& text, bool notify)
 {
@@ -219,6 +226,51 @@ void Start(Player* player, Map* map, Keystone const& key)
     ScaleMap(map, *run);
     Announce(map, player->GetName() + " starts " + KeyName(key) + " (" + AffixLine(*run) + "). The timer starts in " +
                       std::to_string(CountdownMs / 1000) + " seconds.", true);
+}
+
+// A whole group of bots, alone in the dungeon, alive and out of combat; the leader's key goes first
+Player* BotKeyHolder(Map* map)
+{
+    Group* group = nullptr;
+    bool ready = true;
+    uint32 present = 0;
+    map->DoForAllPlayers([&](Player* player)
+    {
+        if (player->IsGameMaster())
+            return;
+        ++present;
+        Group* own = player->GetGroup();
+        if (!IsBot(player) || !own || (group && own != group) || !player->IsAlive() || player->IsInCombat())
+            ready = false;
+        group = own;
+    });
+    if (!ready || !group || present != group->GetMembersCount())
+        return nullptr;
+    Player* holder = nullptr;
+    for (GroupReference* itr = group->GetFirstMember(); itr; itr = itr->next())
+    {
+        Player* member = itr->GetSource();
+        if (member && member->GetMap() == map && HoldsKeyFor(member, map) &&
+            (!holder || member->GetGUID() == group->GetLeaderGUID()))
+            holder = member;
+    }
+    return holder;
+}
+
+// Bots can't use the Font's gossip, so a bot group puts its key in once everyone has come in
+void TryBotStart(Map* map, uint32 diff)
+{
+    if (!map->IsDungeon() || !FindDungeon(map->GetId()) || !map->HavePlayers())
+        return;
+    BotStartTimer* timer = map->CustomData.GetDefault<BotStartTimer>(BotStartKey);
+    timer->ms += diff;
+    if (timer->ms < BotStartCheckMs)
+        return;
+    timer->ms = 0;
+    if (!FontRefusal(map).empty())
+        return;
+    if (Player* holder = BotKeyHolder(map))
+        Start(holder, map, GetKeystone(holder));
 }
 
 void Snapshot(Map* map, MythicRun const& run)
@@ -436,7 +488,10 @@ public:
     {
         MythicRun* run = FindRun(map);
         if (!run)
+        {
+            TryBotStart(map, diff);
             return;
+        }
         switch (run->state)
         {
             case RunState::Countdown:

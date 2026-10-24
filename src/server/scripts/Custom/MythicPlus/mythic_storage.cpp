@@ -15,6 +15,7 @@
 #include "MythicPlus.h"
 #include "Player.h"
 #include "QueryResult.h"
+#include "Random.h"
 #include "ScriptMgr.h"
 #include "WorldSession.h"
 
@@ -242,6 +243,8 @@ public:
         SyncKeystoneItem(player, GetKeystone(player));
         if (!IsBot(player))
             return;
+        if (player->GetLevel() >= HeroicLevel && !GetKeystone(player).map)
+            SetKeystone(player, Dungeons[urand(0, uint32(Dungeons.size() - 1))].map, MinKeyLevel);
         OpenVault(player);
         SpendCrestsOnGear(player);
     }
