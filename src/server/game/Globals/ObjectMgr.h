@@ -783,6 +783,8 @@ public:
     CreatureAddon const* GetCreatureTemplateAddon(uint32 entry);
     CreatureMovementData const* GetCreatureMovementOverride(ObjectGuid::LowType spawnId) const;
     ItemTemplate const* GetItemTemplate(uint32 entry);
+    // Adds a template built at runtime (solo-wow Mythic+ ranks); nullptr when the entry is already taken
+    ItemTemplate const* AddRuntimeItemTemplate(ItemTemplate const& itemTemplate);
     [[nodiscard]] ItemTemplateContainer const* GetItemTemplateStore() const { return &_itemTemplateStore; }
     [[nodiscard]] std::vector<ItemTemplate*> const* GetItemTemplateStoreFast() const { return &_itemTemplateStoreFast; }
 
