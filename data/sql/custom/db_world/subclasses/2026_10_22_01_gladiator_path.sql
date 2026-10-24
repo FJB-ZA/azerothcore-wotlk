@@ -5,8 +5,8 @@ INSERT INTO `subclass_path` (`id`, `name`, `class`, `unlock_level`, `era`, `unlo
 
 DELETE FROM `subclass_spell_swap` WHERE `path_id` = 1;
 INSERT INTO `subclass_spell_swap` (`path_id`, `spell`, `replacement`) VALUES
-(1, 2457, 990100),
-(1, 2565, 990101),
+(1, 2457, 990100), -- Battle Stance, once the Gladiator Stance talent is learned
+(1, 2565, 990101), -- Shield Block, once the Shield Charge talent is learned
 (1, 6572, 990110),
 (1, 6574, 990111),
 (1, 7379, 990112),
