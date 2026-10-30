@@ -19,7 +19,9 @@ On a quiet spot of open ground (nothing hostile in 60 yards), as a GM with no bo
 - The spec numbers are the class's premade specs in `playerbots.conf` (`Playerbots.PremadeSpecName.<class>.<no>`).
   The two are the same build for a path without its own tree (the Necromancer's Affliction against the warlock's
   Affliction). For a path with a tree they are the path's premade spec and the plain spec it grew from.
-- `fights` is the least a run fights (default 3); `seconds` is each fight's length (default 180).
+- `fights` is the least a run fights (default 3), and the most is the larger of `fights` and 8; `seconds` is each
+  fight's length (default 180). A class whose bots run out of mana in a long fight is measured in shorter fights
+  (warlock Destruction: 90): each fight logs both bots' mana and health in tenths, so a fight that ends dry shows.
 - `swap 1` puts the bot that would have been plain on the path; the row says "sides swapped". Each run names
   both bots' races, as a race's bonus can count (below).
 
@@ -39,7 +41,8 @@ On a quiet spot of open ground (nothing hostile in 60 yards), as a GM with no bo
    drops a player from combat 5 seconds after their last direct hit; neither bot assists its group, which would send
    one onto the other's dummy. Everything a bot and its pets, guardians and totems deal is metered after absorbs
    (`UnitScript::DealDamage`), before the dummy throws it away.
-6. Between fights: cooldowns reset, health and power full, 15 seconds' rest, fresh dummies.
+6. Between fights: cooldowns reset, health and power full, 15 seconds' rest, fresh dummies; the reset is done again
+   as the fight starts.
 7. After `fights` fights, while the difference is still too close to the budget to call, it fights on, up to 8.
 8. Then the bots log out and one row goes to the GM's chat, the server log and `<LogsDir>/balance-<path>.md`. Copy
    that file's rows into the path's `balance.md`.
@@ -68,7 +71,8 @@ again; "inconclusive" means running more fights.
 ## Seen in game
 
 The Necromancer, 2026-10-30, levels 20, 40 and 60, each warlock spec: Affliction passes at all three, Demonology at
-all three (at 60 with the sides swapped), Destruction at 20 with no verdict at 40 or 60. The rows and what they mean
+all three (at 60 with the sides swapped), Destruction at 20 and 60 (90-second fights); Destruction at 40 has no
+single-run verdict but sits inside the budget once the two bots' races are averaged out. The rows and what they mean
 are in `Necromancer/balance.md`.
 
 Getting there found these in the harness and the bots, each fixed and measured again:
@@ -84,5 +88,12 @@ Getting there found these in the harness and the bots, each fixed and measured a
 - The path bot's cloned gear had no enchants or gems, 10-27% of its damage at level 60.
 - Two bots of different races: a gnome's Intellect is worth 1-3% in a fight short of mana. Hence `swap`.
 
-Still open: Destruction bots swing about ±15% from fight to fight on how they handle mana and health (fewer Life
-Taps, more wand shots, a drink mid-fight in their weak fights), too much for a verdict in a sensible number of fights.
+- Destruction bots swung about ±15% from fight to fight. At 0 mana and under 45% health a warlock bot never Life
+  Tapped, and wanded out the fight. Unattacked, it now taps while the tap leaves it above 25% health. A tap to under
+  10% in the first try showed the floor must count the tap's own cost. A run's first fight also started with the
+  warm-up's cooldowns and mana: the reset now happens as each fight starts.
+- In 180-second fights Destruction bots still run dry at about 110 seconds; 90-second fights end before that at 60,
+  but not quite at 40.
+
+Still open: the two bots' races. At level 40 Destruction the gnome's Intellect was worth about 3 points either way.
+`swap 1` and averaging the two runs handles it; two bots of the same race would be cleaner.

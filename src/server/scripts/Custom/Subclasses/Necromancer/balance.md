@@ -1,7 +1,8 @@
 # Necromancer balance
 
 Measured with the balance harness (`../BALANCE.md`): a plain warlock bot against a Necromancer bot of the same level,
-talents and gear, each on its own Grandmaster's Training Dummy, fights of 180 seconds after an uncounted warm-up. The
+talents and gear, each on its own Grandmaster's Training Dummy, fights of 180 seconds (Destruction at 40 and 60: 90
+seconds, below) after an uncounted warm-up. The
 difference carries a margin of two standard errors; the budget is 5%.
 
 ## Single target
@@ -21,14 +22,29 @@ difference carries a margin of two standard errors; the budget is 5%.
 
 The two bots were a gnome (plain) and a human (Necromancer); "sides swapped" puts the gnome on the path.
 
+### Destruction, 90-second fights
+
+After the Life Tap fix (below), measured again with fights of 90 seconds, `.balance start 2 <level> 2 2 6 90`:
+
+| Date | Level | Spec | Scenario | Plain | Path | Difference | Damage taken | Pet share | Verdict |
+|---|---|---|---|---|---|---|---|---|---|
+| 2026-10-30 | 40 | destro pve / destro pve | single target | 227.3 DPS | 222.0 DPS | -2.4% ± 4.1% | +0.0% | 11% / 13% | inconclusive: too close to the budget for 8 fights; run more |
+| 2026-10-30 | 40 | destro pve / destro pve (sides swapped) | single target | 225.5 DPS | 234.8 DPS | +4.1% ± 4.0% | +0.0% | 10% / 13% | inconclusive: too close to the budget for 12 fights; run more |
+| 2026-10-30 | 60 | destro pve / destro pve | single target | 889.1 DPS | 901.9 DPS | +1.4% ± 3.2% | +0.0% | 5% / 7% | pass |
+
 ## Reading
 
 - **Affliction passes at 20, 40 and 60.**
 - **Demonology passes at 20 and 40; at 60 it passes with the sides swapped.** The Necromancer sits 1-4% behind at
   every level. Demonology bots run short of mana and wand, so the gnome's 5% more Intellect counts: -3.8% with the
   gnome plain, -1.1% with the gnome on the path, about -2.5% between the two. Inside the budget.
-- **Destruction has no verdict at 40 or 60.** A Destruction bot's fights swing about ±15% (636 to 933 DPS for the
-  same bot at 60): its weak fights have fewer Life Taps, more wand shots and once a drink mid-fight. That is the
-  bot's mana and health handling, on both sides, not the path; it needs fixing, or a measurement with mana held
-  full, before Destruction can be judged.
-- Not measured yet: the 5-mob pack, duels, and levels 70 and 80.
+- **Destruction passes at 20 and 60; at 40 it is inside the budget across both sides, with no single-run
+  verdict.** In 180-second fights a Destruction bot's damage swung about ±15% (636 to 933 DPS for the same bot at
+  60). The per-fight mana and health trace showed why: by about 110 seconds a bot sat at 0 mana and 30-40% health,
+  below the 45% floor under which bots never Life Tap, and wanded out the fight; when that came depended on random
+  Soul Leech heals. Bots now Life Tap, while nothing attacks them, as long as the tap leaves them above 25%
+  (mod-playerbots 57b794d1), and the 90-second fights end before the wall at 60. At 40 the wall still comes in the
+  last 10-15 seconds, so the gnome's extra mana counts for about 3 points: -2.4% with the gnome plain, +4.1% with
+  the gnome on the path. The mean of the two, which cancels the race, is +0.9% ± 2.9%.
+- Not measured yet: the 5-mob pack, duels, and levels 70 and 80. Two bots of the same race would remove the race
+  effect from runs like Destruction at 40; the harness takes whichever bots `addclass` gives.
