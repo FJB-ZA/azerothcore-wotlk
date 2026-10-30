@@ -85,16 +85,20 @@ namespace Trainer
         if (!IsTrainerValidForPlayer(player))
             return;
 
+        // solo-wow: sub-class paths list a replacement spell in place of the trainer's own; replies use the shown id
+        uint32 const shownSpellId = spellId;
+        sScriptMgr->OnPlayerResolveTrainerSpell(player, _trainerId, spellId);
+
         Spell const* trainerSpell = GetSpell(spellId);
         if (!trainerSpell)
         {
-            SendTeachFailure(npc, player, spellId, FailReason::Unavailable);
+            SendTeachFailure(npc, player, shownSpellId, FailReason::Unavailable);
             return;
         }
 
         if (!CanTeachSpell(player, trainerSpell))
         {
-            SendTeachFailure(npc, player, spellId, FailReason::NotEnoughSkill);
+            SendTeachFailure(npc, player, shownSpellId, FailReason::NotEnoughSkill);
             return;
         }
 
@@ -102,7 +106,7 @@ namespace Trainer
         int32 moneyCost = int32(trainerSpell->MoneyCost * reputationDiscount);
         if (!player->HasEnoughMoney(moneyCost))
         {
-            SendTeachFailure(npc, player, spellId, FailReason::NotEnoughMoney);
+            SendTeachFailure(npc, player, shownSpellId, FailReason::NotEnoughMoney);
             return;
         }
 
@@ -119,7 +123,7 @@ namespace Trainer
         else if (sScriptMgr->OnPlayerCanLearnSpell(player, trainerSpell->SpellId))
             player->CastSpell(player, trainerSpell->SpellId, true);
 
-        SendTeachSucceeded(npc, player, spellId);
+        SendTeachSucceeded(npc, player, shownSpellId);
 
         sScriptMgr->OnPlayerAfterTrainSpell(player, npc, spellId);
     }

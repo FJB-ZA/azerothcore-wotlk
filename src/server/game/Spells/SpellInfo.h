@@ -414,6 +414,7 @@ public:
     uint32 PreventionType;
     int32  AreaGroupId;
     uint32 SchoolMask;
+    uint32 BonusSchoolMask = 0; // solo-wow: extra schools the caster's own bonuses count this spell as (sub-class paths)
     std::array<SpellEffectInfo, MAX_SPELL_EFFECTS> Effects;
     uint32 ExplicitTargetMask;
     SpellChainNode const* ChainEntry;
@@ -520,6 +521,10 @@ public:
     bool ValidateAttribute6SpellDamageMods(Unit const* caster, AuraEffect const* auraEffect, bool isDot) const;
 
     SpellSchoolMask GetSchoolMask() const;
+    /// The schools the caster's damage, healing and crit bonuses count this spell as; resistances still use GetSchoolMask.
+    SpellSchoolMask GetBonusSchoolMask() const { return SpellSchoolMask(SchoolMask | BonusSchoolMask); }
+    /// Crit chance counts the bonus schools but never physical, which would stop a magic spell from critting at all.
+    SpellSchoolMask GetCritSchoolMask(SpellSchoolMask schoolMask) const { return SpellSchoolMask(schoolMask | (BonusSchoolMask & ~SPELL_SCHOOL_MASK_NORMAL)); }
     uint64 GetAllEffectsMechanicMask() const;
     uint64 GetEffectMechanicMask(uint8 effIndex) const;
     uint64 GetSpellMechanicMaskByEffectMask(uint32 effectMask) const;
