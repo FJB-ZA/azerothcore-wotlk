@@ -415,6 +415,16 @@ void WorldSession::HandleCastSpellOpcode(WorldPacket& recvPacket)
         return;
     }
 
+    // solo-wow: tracking spells stack, as in retail (SpellInfo::IsAuraExclusiveBySpecificWith), so casting one that is
+    // already on turns it off: the minimap's tracking menu toggles each type, on any client
+    if (spellInfo->GetSpellSpecific() == SPELL_SPECIFIC_TRACKER && _player->HasAura(spellId, _player->GetGUID()))
+    {
+        _player->RemoveAurasDueToSpell(spellId, _player->GetGUID());
+        Spell::SendCastResult(_player, spellInfo, castCount, SPELL_FAILED_DONT_REPORT);
+        recvPacket.rfinish(); // the targets aren't needed
+        return;
+    }
+
     // fail if we are cancelling pending request
     if (!_player->SpellQueue.empty())
     {
