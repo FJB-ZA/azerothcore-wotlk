@@ -25,7 +25,8 @@ namespace SubclassBalance
 {
 inline constexpr double BudgetPct = 5.0;        // the path's output and damage taken, against the plain class's
 inline constexpr uint32_t MinFights = 3;        // fights of each side before a scenario can pass
-inline constexpr double NoisePct = BudgetPct / 2; // a side whose fights spread more than this can't be judged
+inline constexpr uint32_t MaxFights = 8;        // a run still undecided after this many stays inconclusive
+inline constexpr double Confidence = 2.0;       // standard errors either side of the difference: about 95%
 inline constexpr uint32_t MinDuels = 10;
 inline constexpr double DuelLow = 0.40;         // the path's share of duels won, inside these
 inline constexpr double DuelHigh = 0.60;
@@ -63,7 +64,8 @@ struct Side
     double petShare = 0;    // of all its damage
     double takenPerSecond = 0;
     uint32_t deaths = 0;
-    double spreadPct = 0;   // its fights' damage per second, the standard deviation as a share of the mean
+    double spreadPct = 0;   // its fights' damage per second, the sample standard deviation as a share of the mean
+    double errorPct = 0;    // the same for the mean itself: the standard error
 };
 
 inline Side Summarize(std::vector<Fight> const& fights)
@@ -89,8 +91,9 @@ inline Side Summarize(std::vector<Fight> const& fights)
     side.dps = sum / n;
     side.petShare = damage ? double(pet) / double(damage) : 0.0;
     side.takenPerSecond = ms ? taken * 1000.0 / double(ms) : 0.0;
-    double const variance = std::max(0.0, squares / n - side.dps * side.dps);
+    double const variance = n > 1 ? std::max(0.0, (squares - n * side.dps * side.dps) / (n - 1)) : 0.0;
     side.spreadPct = side.dps > 0 ? std::sqrt(variance) / side.dps * 100.0 : 0.0;
+    side.errorPct = side.spreadPct / std::sqrt(n);
     return side;
 }
 
@@ -114,13 +117,16 @@ struct Comparison
 {
     Side plain, path;
     double dpsDiffPct = 0;
+    double marginPct = 0;   // how far the true difference may be from dpsDiffPct, in percent of the plain class's
     double takenDiffPct = 0;
     Verdict verdict = Verdict::Inconclusive;
     std::string why;  // what failed or kept it from a verdict, empty on a pass
 };
 
-// A damage scenario (the dummy or the pack): both sides' damage and damage taken within the budget. Too few fights,
-// a side that never dealt damage, or fights spread wider than half the budget give no verdict: run it again.
+// A damage scenario (the dummy or the pack): both sides' damage and damage taken within the budget. A fight's damage
+// varies with crits and procs, so the difference between the two means carries a margin of Confidence standard
+// errors: it passes when the whole margin is inside the budget and fails when the whole margin is past it. Between
+// the two, too few fights, or a side that never dealt damage, there is no verdict: run more fights.
 inline Comparison Compare(std::vector<Fight> const& plainFights, std::vector<Fight> const& pathFights)
 {
     Comparison c;
@@ -132,18 +138,31 @@ inline Comparison Compare(std::vector<Fight> const& plainFights, std::vector<Fig
         c.why = "fewer than " + std::to_string(MinFights) + " fights a side";
     else if (c.plain.dps <= 0 || c.path.dps <= 0)
         c.why = "a side dealt no damage";
-    else if (c.plain.spreadPct > NoisePct || c.path.spreadPct > NoisePct)
-        c.why = "fights too uneven to judge";
     if (!c.why.empty())
         return c;
-    if (std::fabs(c.dpsDiffPct) > BudgetPct)
+    double const plainError = c.plain.errorPct / 100.0 * c.plain.dps, pathError = c.path.errorPct / 100.0 * c.path.dps;
+    c.marginPct = Confidence * std::sqrt(plainError * plainError + pathError * pathError) / c.plain.dps * 100.0;
+    double const damage = std::fabs(c.dpsDiffPct);
+    if (damage - c.marginPct > BudgetPct)
         c.why = "damage outside the budget";
     else if (c.plain.takenPerSecond > 0 && std::fabs(c.takenDiffPct) > BudgetPct)
         c.why = "damage taken outside the budget";
     else if (c.path.deaths > c.plain.deaths)
         c.why = "the path died more";
+    else if (damage + c.marginPct > BudgetPct)
+    {
+        c.why = "too close to the budget for " + std::to_string(std::min(c.plain.fights, c.path.fights)) +
+                " fights; run more";
+        return c;
+    }
     c.verdict = c.why.empty() ? Verdict::Pass : Verdict::Fail;
     return c;
+}
+
+// Whether a run that has fought `fought` fights a side should fight another: only while its answer is still open
+inline bool FightOn(Comparison const& c, uint32_t fought, uint32_t cap = MaxFights)
+{
+    return fought < cap && c.verdict == Verdict::Inconclusive && c.plain.dps > 0 && c.path.dps > 0;
 }
 
 // Duels between the two: the path's wins of those decided, even within DuelLow..DuelHigh
@@ -209,7 +228,7 @@ inline std::string TableRow(Row const& row, Comparison const& c)
 {
     return "| " + row.date + " | " + std::to_string(row.level) + " | " + row.spec + " | " + ScenarioName(row.scenario) +
            " | " + Fixed(c.plain.dps, "%.1f") + " DPS | " + Fixed(c.path.dps, "%.1f") + " DPS | " +
-           Signed(c.dpsDiffPct) + " | " + Signed(c.takenDiffPct) + " | " + Fixed(c.plain.petShare * 100, "%.0f%%") +
+           Signed(c.dpsDiffPct) + " ± " + Fixed(c.marginPct, "%.1f%%") + " | " + Signed(c.takenDiffPct) + " | " + Fixed(c.plain.petShare * 100, "%.0f%%") +
            " / " + Fixed(c.path.petShare * 100, "%.0f%%") + " | " + VerdictCell(c.verdict, c.why) + " |\n";
 }
 
