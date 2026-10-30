@@ -58,6 +58,8 @@ struct CharacterPaths : DataMap::Base
     bool loaded = false;
     bool randomBot = false;
     bool dirty = false;  // reconcile on the next update, once whatever learned a spell has sent its own packets
+    // Originals a path's talent took out of each slot (character_subclass_taken), the ones it gives back
+    std::array<std::unordered_set<uint32>, MAX_TALENT_SPECS> taken{};
     uint32 sinceSweep = 0;
 };
 
@@ -171,14 +173,26 @@ void Reconcile(Player* player)
             bool const hasOriginal = HasInSlot(player, swap.original, group);
             if (swap.talent)
             {
-                SpellInfo const* original = sSpellMgr->GetSpellInfo(swap.original);
-                bool const levelReached = original && player->GetLevel() >= original->SpellLevel;
+                std::unordered_set<uint32>& taken = data->taken[group];
                 SubclassPaths::SpellMove const move = SubclassPaths::TalentMove(
-                    onPath, hasOriginal, player->HasTalent(swap.replacement, group), levelReached);
+                    onPath, hasOriginal, player->HasTalent(swap.replacement, group), taken.count(swap.original) != 0);
+                uint32 const guid = player->GetGUID().GetCounter();
                 if (move == SubclassPaths::SpellMove::DropOriginal)
+                {
                     player->removeSpell(swap.original, mask, false);
-                else if (move == SubclassPaths::SpellMove::GiveOriginal && player->addSpell(swap.original, mask, true))
-                    player->SendLearnPacket(swap.original, true);
+                    taken.insert(swap.original);
+                    // Written at once, so a quick relog can't lose what the slot is owed back
+                    CharacterDatabase.DirectExecute("INSERT IGNORE INTO character_subclass_taken (guid, talent_group, spell) "
+                                                    "VALUES ({}, {}, {})", guid, group, swap.original);
+                }
+                else if (move == SubclassPaths::SpellMove::GiveOriginal)
+                {
+                    if (player->addSpell(swap.original, mask, true))
+                        player->SendLearnPacket(swap.original, true);
+                    taken.erase(swap.original);
+                    CharacterDatabase.DirectExecute("DELETE FROM character_subclass_taken WHERE guid = {} AND talent_group = {} "
+                                                    "AND spell = {}", guid, group, swap.original);
+                }
                 continue;
             }
             bool const hasReplacement = HasInSlot(player, swap.replacement, group);
@@ -247,6 +261,16 @@ void Load(Player* player)
             uint8 const group = fields[0].Get<uint8>();
             if (group < MAX_TALENT_SPECS)
                 data->group[group] = fields[1].Get<uint16>();
+        } while (result->NextRow());
+    }
+    if (QueryResult result = CharacterDatabase.Query("SELECT talent_group, spell FROM character_subclass_taken WHERE guid = {}", guid))
+    {
+        do
+        {
+            Field* fields = result->Fetch();
+            uint8 const group = fields[0].Get<uint8>();
+            if (group < MAX_TALENT_SPECS)
+                data->taken[group].insert(fields[1].Get<uint32>());
         } while (result->NextRow());
     }
     if (QueryResult result = CharacterDatabase.Query("SELECT last_fee, last_change FROM character_subclass_fee WHERE guid = {}", guid))
@@ -398,7 +422,7 @@ void LoadPathRows()
 {
     QueryResult result = WorldDatabase.Query(
         "SELECT id, name, class, unlock_level, era, damage_pve, damage_pvp, healing_pve, healing_pvp, unlock_quest, "
-        "talent_tab, bot_share FROM subclass_path");
+        "talent_tab, bot_share, `role` FROM subclass_path");
     if (!result)
         return;
     do
@@ -420,6 +444,14 @@ void LoadPathRows()
             LOG_ERROR("sql.sql", "subclass_path: path {} unlocks with quest {}, which doesn't exist.", id, path.unlockQuest);
         LoadTree(path, fields[10].Get<uint32>());
         path.botShare = std::clamp(fields[11].Get<float>(), 0.0f, 1.0f);
+        path.role = fields[12].Get<uint8>();
+        if (path.role > uint8(TalentTabRole::Healer))
+        {
+            LOG_ERROR("sql.sql", "subclass_path: path {} has role {}, past the last one (4, healer); ignored.", id, path.role);
+            path.role = 0;
+        }
+        if (path.talentTab)
+            SetTalentTabRole(path.talentTab, TalentTabRole(path.role));
         affectsCombat |= !path.modifiers.Neutral();
     } while (result->NextRow());
 }
@@ -513,6 +545,8 @@ void LoadPaths()
     swappedOriginals.clear();
     creatureSwaps.clear();
     bonusSchoolSpells.clear();
+    for (auto const& [tab, owner] : treeOwners)
+        SetTalentTabRole(tab, TalentTabRole::None);
     treeOwners.clear();
     affectsCombat = false;
 
@@ -674,6 +708,7 @@ public:
     {
         CharacterDatabase.Execute("DELETE FROM character_subclass_path WHERE guid = {}", guid.GetCounter());
         CharacterDatabase.Execute("DELETE FROM character_subclass_fee WHERE guid = {}", guid.GetCounter());
+        CharacterDatabase.Execute("DELETE FROM character_subclass_taken WHERE guid = {}", guid.GetCounter());
     }
 };
 
