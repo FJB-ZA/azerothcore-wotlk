@@ -10,6 +10,8 @@ CREATE TABLE IF NOT EXISTS `subclass_path` (
   `damage_pvp` FLOAT NOT NULL DEFAULT 1 COMMENT 'damage done to anything a player controls',
   `healing_pve` FLOAT NOT NULL DEFAULT 1 COMMENT 'healing done outside battlegrounds and arenas',
   `healing_pvp` FLOAT NOT NULL DEFAULT 1 COMMENT 'healing done inside battlegrounds and arenas',
+  `talent_tab` INT UNSIGNED NOT NULL DEFAULT 0 COMMENT 'the path''s own talent tree (talenttab_dbc), open only on the path',
+  `bot_share` FLOAT NOT NULL DEFAULT 0 COMMENT 'share (0-1) of the class''s random bots that take the path',
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='solo-wow sub-class paths';
 

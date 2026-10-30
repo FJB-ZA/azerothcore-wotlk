@@ -1749,6 +1749,8 @@ public:
     [[nodiscard]] uint32 GetFreeTalentPoints() const { return GetUInt32Value(PLAYER_CHARACTER_POINTS1); }
     void SetFreeTalentPoints(uint32 points);
     bool resetTalents(bool noResetCost = false);
+    // Unlearns the active spec's talents in one tree for free and returns the points given back
+    uint32 ResetTalentTab(uint32 talentTabId);
     [[nodiscard]] uint32 resetTalentsCost() const;
     bool IsMaxLevel() const;
     void InitTalentForLevel();

@@ -11,6 +11,8 @@
 #define _SUBCLASS_PATH_POLICY_H
 
 #include <cstdint>
+#include <string>
+#include <string_view>
 
 // Sub-class paths (solo-wow): each spec slot may follow one path of its class, whose replacement spells mirror the
 // spells they replace. Path 0 is the plain class.
@@ -19,6 +21,7 @@ namespace SubclassPaths
 inline constexpr uint16_t PlainClass = 0;
 inline constexpr uint32_t Gold = 10000;
 inline constexpr uint64_t MonthSeconds = 30ull * 24 * 3600;  // the core's MONTH
+inline constexpr char const* AddonPrefix = "SoloWowPath";
 
 // The core keeps a learned spell's talent groups as a bit mask (character_spell.specMask).
 constexpr uint8_t SlotMask(uint8_t talentGroup) { return uint8_t(1u << talentGroup); }
@@ -121,6 +124,37 @@ constexpr SpellMove Move(bool slotOnRowPath, bool hasOriginal, bool hasReplaceme
         return hasOriginal ? SpellMove::ToReplacement : SpellMove::None;
     return hasReplacement ? SpellMove::ToOriginal : SpellMove::None;
 }
+
+// A path's own tree (subclass_path.talent_tab) opens only while the active slot follows it; class trees have owner 0.
+constexpr bool TreeOpen(uint16_t treeOwner, uint16_t activePath)
+{
+    return treeOwner == PlainClass || treeOwner == activePath;
+}
+
+// "P1 <slot> <pathId> <tree> <points> <name>"; tree is the client's tab number (1-4) or 0, points are spent in it.
+inline std::string FormatSlotPath(uint8_t slot, uint16_t pathId, uint8_t tree, uint32_t points, std::string_view name)
+{
+    std::string line = "P1 " + std::to_string(slot) + ' ' + std::to_string(pathId) + ' ' + std::to_string(tree) + ' ' +
+                       std::to_string(points);
+    if (pathId != PlainClass && !name.empty())
+        line.append(" ").append(name);
+    return line;
+}
+
+// A stable hash of guid and path, so the same `share` (0-1) of a class's bots take the path and nothing is stored.
+constexpr bool BotTakesPath(uint32_t guid, uint16_t pathId, float share)
+{
+    if (share <= 0.0f)
+        return false;
+    uint32_t hash = guid * 2654435761u ^ uint32_t(pathId) * 40503u;
+    hash ^= hash >> 16;
+    hash *= 0x45d9f3bu;
+    hash ^= hash >> 16;
+    return float(hash % 10000u) < share * 10000.0f;
+}
+
+// The addon asks for every slot's line with "Q".
+constexpr bool IsQuery(std::string_view body) { return body == "Q"; }
 }
 
 #endif
