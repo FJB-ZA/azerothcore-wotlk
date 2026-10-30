@@ -10,7 +10,7 @@ tested by solo-wow's `tests/subclass-balance-policy.cpp`; the command is in mod-
 On a quiet spot of open ground (nothing hostile in 60 yards), as a GM with no bots of the class already added:
 
 ```
-.balance start <path id> <level> <plain spec no> <path spec no> [fights] [seconds]
+.balance start <path id> <level> <plain spec no> <path spec no> [fights] [seconds] [swap]
 .balance status
 .balance stop
 ```
@@ -20,13 +20,16 @@ On a quiet spot of open ground (nothing hostile in 60 yards), as a GM with no bo
   The two are the same build for a path without its own tree (the Necromancer's Affliction against the warlock's
   Affliction). For a path with a tree they are the path's premade spec and the plain spec it grew from.
 - `fights` is the least a run fights (default 3); `seconds` is each fight's length (default 180).
+- `swap 1` puts the bot that would have been plain on the path; the row says "sides swapped". Each run names
+  both bots' races, as a race's bonus can count (below).
 
 ## What it does
 
 1. Adds two bots of the path's class (`addclass`, so the account needs two free characters of the class).
 2. Brings both to the level (`PlayerbotFactory::Randomize`), puts the second on the path, gives each its spec and
-   glyphs, gears the first with blue items for the level (`AutoGear`) and clones every worn item, with its enchants
-   and random stats, onto the second.
+   glyphs, gears the first with blue items for the level (`AutoGear`) and clones every worn item, with its random
+   stats, enchants and gems, onto the second. It says both bots' item, enchant, spell power and attack power counts,
+   so a gear difference shows.
 3. Places them 40 yards apart beside the GM, on the ground, each with a Grandmaster's Training Dummy of the run's level
    15 yards ahead, and waits 20 seconds for buffs, pets and minions. A bot drops a target it can't see, so a spot
    without a clear line to its dummy stops the run: stand on flat, open ground.
@@ -54,18 +57,32 @@ difference between the two sides' means carries a margin of two standard errors 
 (`+0.7% ± 4.4%`). A difference passes when the whole margin lies inside the 5% budget and fails when the whole margin
 lies past it.
 
+Known limit: the two bots are whichever characters `addclass` gives, so they may be different races (in the
+Necromancer's runs a Gnome warlock against a Human Necromancer: the Gnome's 5% more Intellect is worth well under 1% of
+damage). A path close to the budget's edge is worth running again with `swap 1`.
+
 Levels: 20, 40 and 60 in vanilla; 70 and 80 once those phases open. Each spec the path supports, at each level the
 path is open at. A FAIL means tuning the path's `subclass_path` modifiers (or the values its design names) and running
 again; "inconclusive" means running more fights.
 
 ## Seen in game
 
-First runs, 2026-10-30, Necromancer at level 60, Affliction both sides, 2 fights of 60 seconds (a check of the
-harness, not a verdict): both bots logged in, took their specs and the path, fought their dummies for the whole fight,
-and the row landed in the file. Damage per second came out at 747 and 678 for the warlock and 651 and 700 for the
-Necromancer, a pet share of 9% each.
+The Necromancer, 2026-10-30, levels 20, 40 and 60, each warlock spec: Affliction passes at all three, Demonology at
+all three (at 60 with the sides swapped), Destruction at 20 with no verdict at 40 or 60. The rows and what they mean
+are in `Necromancer/balance.md`.
 
-- Fights of 60 seconds vary by about 10% from one to the next, far past the 2.5% the verdict needs; the default 180
-  seconds and more fights are needed before a path can be judged.
-- In the very first run the plain warlock dealt nothing in either fight and the cause wasn't found; it hasn't happened
-  since. Each fight now logs each bot's level, combat state, target and distance to its dummy, so it shows if it does.
+Getting there found these in the harness and the bots, each fixed and measured again:
+
+- The plain bot dealt nothing at level 20: its dummy sat in a slope at the GM's height, out of its sight, and a bot
+  drops a target it can't see. Spots are now on the ground and checked.
+- The two bots hit the same dummy now and then: "dps assist" sent the plain one onto the path bot's target.
+- The first fight ran about 10% low on both sides: the uncounted warm-up.
+- A per-fight spread limit of 2.5% turned away almost every run; a 180-second fight varies about 3%. The margin rule
+  replaced it.
+- Necromancer bots recast Plague Strike every global cooldown and never reached Shadow Bolt: `PlayerbotAI::GetAura`
+  didn't map Immolate to the path's spell. This was in every Necromancer bot, not only the harness's.
+- The path bot's cloned gear had no enchants or gems, 10-27% of its damage at level 60.
+- Two bots of different races: a gnome's Intellect is worth 1-3% in a fight short of mana. Hence `swap`.
+
+Still open: Destruction bots swing about ±15% from fight to fight on how they handle mana and health (fewer Life
+Taps, more wand shots, a drink mid-fight in their weak fights), too much for a verdict in a sensible number of fights.
