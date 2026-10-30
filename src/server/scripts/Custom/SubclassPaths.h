@@ -28,6 +28,7 @@ struct SpellSwap
     uint32 original;
     uint32 replacement;
     uint8 rank;
+    bool talent;  // the replacement is learned from the path's tree, not handed out by the swap
 };
 
 struct Path
