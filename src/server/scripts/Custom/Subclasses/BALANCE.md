@@ -48,8 +48,14 @@ Levels: 20, 40 and 60 in vanilla; 70 and 80 once those phases open. Each spec th
 path is open at. A FAIL means tuning the path's `subclass_path` modifiers (or the values its design names) and running
 again; "inconclusive" means running more fights.
 
-## Not yet seen in game
+## Seen in game
 
-The command was written on 2026-10-29 and has not been built or run yet. The first runs should check that:
-the two bots log in and take the right specs; the path bot's minions replace its demons before the first fight; both
-bots keep casting for the whole fight; the pet share is non-zero for pet classes; and the row lands in the file.
+First runs, 2026-10-30, Necromancer at level 60, Affliction both sides, 2 fights of 60 seconds (a check of the
+harness, not a verdict): both bots logged in, took their specs and the path, fought their dummies for the whole fight,
+and the row landed in the file. Damage per second came out at 747 and 678 for the warlock and 651 and 700 for the
+Necromancer, a pet share of 9% each.
+
+- Fights of 60 seconds vary by about 10% from one to the next, far past the 2.5% the verdict needs; the default 180
+  seconds and more fights are needed before a path can be judged.
+- In the very first run the plain warlock dealt nothing in either fight and the cause wasn't found; it hasn't happened
+  since. Each fight now logs each bot's level, combat state, target and distance to its dummy, so it shows if it does.
