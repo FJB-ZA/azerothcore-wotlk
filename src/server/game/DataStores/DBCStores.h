@@ -56,6 +56,20 @@ bool IsSharedDifficultyMap(uint32 mapid);
 
 uint32 const* /*[MAX_TALENT_TABS]*/ GetTalentTabPages(uint8 cls);
 
+// solo-wow: the role a talent tree stands for when the core's role helpers can't tell from the stock trees (a
+// sub-class path's own tree). Talent tabs without one keep the stock behaviour.
+enum class TalentTabRole : uint8
+{
+    None,
+    Tank,
+    Melee,
+    Caster,
+    Healer,
+};
+
+void SetTalentTabRole(uint32 talentTabId, TalentTabRole role);
+TalentTabRole GetTalentTabRole(uint32 talentTabId);
+
 uint32 GetLiquidFlags(uint32 liquidType);
 
 PvPDifficultyEntry const* GetBattlegroundBracketByLevel(uint32 mapid, uint32 level);

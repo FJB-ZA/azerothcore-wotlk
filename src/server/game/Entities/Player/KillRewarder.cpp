@@ -68,7 +68,7 @@
 KillRewarder::KillRewarder(Player* killer, Unit* victim, bool isBattleGround) :
 // 1. Initialize internal variables to default values.
         _killer(killer), _victim(victim), _group(killer->GetGroup()),
-        _groupRate(1.0f), _maxNotGrayMember(nullptr), _maxNotGrayMemberLevel(0), _count(0), _aliveSumLevel(0), _sumLevel(0), _xp(0),
+        _groupRate(1.0f), _maxNotGrayMember(nullptr), _maxNotGrayMemberLevel(0), _count(0), _xpShareCount(0), _aliveSumLevel(0), _sumLevel(0), _xp(0),
         _isFullXP(false), _maxLevel(0), _isBattleGround(isBattleGround), _isPvP(false)
 {
     // mark the credit as pvp if victim is player
@@ -85,18 +85,29 @@ void KillRewarder::_InitGroupData()
 {
     if (_group)
     {
+        // solo-wow: mentor mode. A mentor earns no kill XP (scripts/Custom/mentor_mode.cpp), so it takes no share of
+        // it either: the members who earn XP split it as if the mentor weren't there. It still counts for honor,
+        // reputation and kill credit.
+        uint8 sharingMaxLevel = 0;
         // 2. In case when player is in group, initialize variables necessary for group calculations:
         for (GroupReference* itr = _group->GetFirstMember(); itr != nullptr; itr = itr->next())
             if (Player* member = itr->GetSource())
                 if ((_killer == member || member->IsAtGroupRewardDistance(_victim)))
                 {
                     const uint8 lvl = _GetPlayerLevel(member);
+                    bool const sharesXP = !member->GetMentorLevel();
                     if (member->IsAlive())
                     {
                         // 2.1. _count - number of alive group members within reward distance;
                         ++_count;
-                        // 2.2. _aliveSumLevel - sum of levels of alive group members within reward distance;
-                        _aliveSumLevel += lvl;
+                        if (sharesXP)
+                        {
+                            ++_xpShareCount;
+                            // 2.2. _aliveSumLevel - sum of levels of alive group members within reward distance;
+                            _aliveSumLevel += lvl;
+                            if (sharingMaxLevel < lvl)
+                                sharingMaxLevel = lvl;
+                        }
                         // 2.3. _maxLevel - maximum level of alive group member within reward distance;
                         if (_maxLevel < lvl)
                         {
@@ -105,21 +116,23 @@ void KillRewarder::_InitGroupData()
                         // 2.4. _maxNotGrayMember - maximum level of alive group member within reward distance,
                         //      for whom victim is not gray;
                         uint32 grayLevel = Acore::XP::GetGrayLevel(lvl);
-                        if (_victim->GetLevel() > grayLevel && (!_maxNotGrayMember || _maxNotGrayMemberLevel < lvl))
+                        if (sharesXP && _victim->GetLevel() > grayLevel &&
+                            (!_maxNotGrayMember || _maxNotGrayMemberLevel < lvl))
                         {
                             _maxNotGrayMember = member;
                             _maxNotGrayMemberLevel = lvl;
                         }
                     }
                     // 2.5. _sumLevel - sum of levels of group members within reward distance;
-                    _sumLevel += lvl;
+                    if (sharesXP)
+                        _sumLevel += lvl;
                 }
         // 2.6. _isFullXP - flag identifying that for all group members victim is not gray,
         //      so 100% XP will be rewarded (50% otherwise).
-        _isFullXP = _maxNotGrayMember && (_maxLevel == _maxNotGrayMemberLevel);
+        _isFullXP = _maxNotGrayMember && (sharingMaxLevel == _maxNotGrayMemberLevel);
     }
     else
-        _count = 1;
+        _count = _xpShareCount = 1;
 }
 
 void KillRewarder::_InitXP(Player* player)
@@ -223,7 +236,11 @@ void KillRewarder::_RewardPlayer(Player* player, bool isDungeon)
     // Give reputation and kill credit only in PvE.
     if (!_isPvP || _isBattleGround)
     {
-        float xpRate = _group ? _groupRate * float(_GetPlayerLevel(player)) / _aliveSumLevel : /*Personal rate is 100%.*/ 1.0f; // Group rate depends on the sum of levels.
+        // Group rate depends on the sum of levels; personal rate is 100%. solo-wow: with no XP-sharing member alive in
+        // range (a mentor alone) there is no sum to divide by.
+        float xpRate = 1.0f;
+        if (_group)
+            xpRate = _aliveSumLevel ? _groupRate * float(_GetPlayerLevel(player)) / _aliveSumLevel : 0.0f;
         sScriptMgr->OnPlayerRewardKillRewarder(player, this, isDungeon, xpRate);                                                // Personal rate is 100%.
 
         if (_xp)
@@ -258,7 +275,7 @@ void KillRewarder::_RewardGroup()
             {
                 // 3.1.2. Alter group rate if group is in raid (not for battlegrounds).
                 const bool isRaid = !_isPvP && sMapStore.LookupEntry(_killer->GetMapId())->IsRaid() && _group->isRaidGroup();
-                _groupRate = Acore::XP::xp_in_group_rate(_count, isRaid);
+                _groupRate = Acore::XP::xp_in_group_rate(_xpShareCount, isRaid);
             }
 
             // 3.1.3. Reward each group member (even dead or corpse) within reward distance.

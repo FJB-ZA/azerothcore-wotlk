@@ -1526,8 +1526,9 @@ bool Player::TeleportTo(uint32 mapid, float x, float y, float z, float orientati
                 UnsummonPetTemporaryIfAny();
         }
 
+        // a dead player releasing spirit on the same map must not end its killer's pvp timeout (#27967)
         if (!(options & TELE_TO_NOT_LEAVE_COMBAT))
-            CombatStop();
+            CombatStop(false, /*mutualPvP*/ true, /*keepPvPForOthers*/ !IsAlive());
 
         // this will be used instead of the current location in SaveToDB
         teleportStore_dest = WorldLocation(mapid, x, y, z, orientation);
@@ -16496,7 +16497,12 @@ uint32 Player::GetSpec(int8 spec)
 
 bool Player::HasTankSpec()
 {
-    switch (GetSpec())
+    uint32 const spec = GetSpec();
+    // solo-wow: a sub-class path's own tree says its role itself
+    if (TalentTabRole const role = GetTalentTabRole(spec); role != TalentTabRole::None)
+        return role == TalentTabRole::Tank;
+
+    switch (spec)
     {
         case TALENT_TREE_WARRIOR_PROTECTION:
         case TALENT_TREE_PALADIN_PROTECTION:
@@ -16514,7 +16520,12 @@ bool Player::HasTankSpec()
 
 bool Player::HasMeleeSpec()
 {
-    switch (GetSpec(GetActiveSpec()))
+    uint32 const spec = GetSpec(GetActiveSpec());
+    // solo-wow: a sub-class path's own tree says its role itself
+    if (TalentTabRole const role = GetTalentTabRole(spec); role != TalentTabRole::None)
+        return role == TalentTabRole::Melee;
+
+    switch (spec)
     {
         case TALENT_TREE_WARRIOR_ARMS:
         case TALENT_TREE_WARRIOR_FURY:
@@ -16537,7 +16548,12 @@ bool Player::HasMeleeSpec()
 
 bool Player::HasCasterSpec()
 {
-    switch (GetSpec(GetActiveSpec()))
+    uint32 const spec = GetSpec(GetActiveSpec());
+    // solo-wow: a sub-class path's own tree says its role itself
+    if (TalentTabRole const role = GetTalentTabRole(spec); role != TalentTabRole::None)
+        return role == TalentTabRole::Caster;
+
+    switch (spec)
     {
         case TALENT_TREE_PRIEST_SHADOW:
         case TALENT_TREE_SHAMAN_ELEMENTAL:
@@ -16560,7 +16576,12 @@ bool Player::HasCasterSpec()
 
 bool Player::HasHealSpec()
 {
-    switch (GetSpec(GetActiveSpec()))
+    uint32 const spec = GetSpec(GetActiveSpec());
+    // solo-wow: a sub-class path's own tree says its role itself
+    if (TalentTabRole const role = GetTalentTabRole(spec); role != TalentTabRole::None)
+        return role == TalentTabRole::Healer;
+
+    switch (spec)
     {
         case TALENT_TREE_PALADIN_HOLY:
         case TALENT_TREE_PRIEST_DISCIPLINE:

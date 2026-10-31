@@ -1254,11 +1254,8 @@ void WorldSession::HandleSocketOpcode(WorldPackets::Item::SocketGems& packet)
         // tried to put gem in socket where no socket exists (take care about prismatic sockets)
         if (!itemProto->Socket[i].Color)
         {
-            // no prismatic socket
-            if (!itemTarget->GetEnchantmentId(PRISMATIC_ENCHANTMENT_SLOT))
-                return;
-
-            if (i != firstPrismatic)
+            // prismatic sockets follow the template's own, as many as the enchant adds
+            if (i < firstPrismatic || i >= firstPrismatic + itemTarget->GetPrismaticSocketCount())
                 return;
         }
 
