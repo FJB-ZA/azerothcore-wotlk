@@ -126,14 +126,14 @@ constexpr SpellMove Move(bool slotOnRowPath, bool hasOriginal, bool hasReplaceme
 }
 
 // A swap row whose replacement is a talent of the path's tree: the talent system owns the replacement, so only the
-// original moves. Off the path a still-known talent is about to be refunded, so its original comes back with it.
-constexpr SpellMove TalentMove(bool slotOnRowPath, bool hasOriginal, bool hasTalent, bool originalLevelReached)
+// original moves. It leaves the slot while the slot is on the path and knows the talent, and comes back once either
+// stops, but only if the path took it (`originalTaken`): a spell the slot never learned isn't handed out.
+constexpr SpellMove TalentMove(bool slotOnRowPath, bool hasOriginal, bool hasTalent, bool originalTaken)
 {
+    bool const talentInEffect = slotOnRowPath && hasTalent;
     if (hasOriginal)
-        return slotOnRowPath && hasTalent ? SpellMove::DropOriginal : SpellMove::None;
-    if (slotOnRowPath)
-        return !hasTalent && originalLevelReached ? SpellMove::GiveOriginal : SpellMove::None;
-    return hasTalent ? SpellMove::GiveOriginal : SpellMove::None;
+        return talentInEffect ? SpellMove::DropOriginal : SpellMove::None;
+    return originalTaken && !talentInEffect ? SpellMove::GiveOriginal : SpellMove::None;
 }
 
 // A path's own tree (subclass_path.talent_tab) opens only while the active slot follows it; class trees have owner 0.

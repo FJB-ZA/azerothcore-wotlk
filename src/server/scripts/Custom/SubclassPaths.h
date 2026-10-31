@@ -39,6 +39,7 @@ struct Path
     uint32 unlockQuest = 0;  // rewarded quest a character needs before choosing the path, 0 for none
     uint32 talentTab = 0;    // the path's own talent tree (TalentTab.dbc), open only on the path; 0 for none
     float botShare = 0.0f;   // share of the class's random bots that take the path once they meet its rules
+    uint8 role = 0;          // what the path's tree plays as for the core's role helpers: TalentTabRole, 0 for none
     Modifiers modifiers;
     std::vector<SpellSwap> swaps;  // highest rank first, because removing a rank also removes the ranks above it
 };

@@ -1,7 +1,7 @@
 -- Gladiator warrior path beyond its spell data (solo-wow patches/client/spell-data/subclasses/gladiator.json).
 DELETE FROM `subclass_path` WHERE `id` = 1;
-INSERT INTO `subclass_path` (`id`, `name`, `class`, `unlock_level`, `era`, `unlock_quest`, `damage_pve`, `damage_pvp`, `healing_pve`, `healing_pvp`, `talent_tab`, `bot_share`) VALUES
-(1, 'Gladiator', 1, 10, 0, 0, 1, 0.9, 1, 1, 990, 0.25); -- 10% less damage on players: tanky, so below Arms in PvP
+INSERT INTO `subclass_path` (`id`, `name`, `class`, `unlock_level`, `era`, `unlock_quest`, `damage_pve`, `damage_pvp`, `healing_pve`, `healing_pvp`, `talent_tab`, `bot_share`, `role`) VALUES
+(1, 'Gladiator', 1, 10, 0, 0, 1, 0.9, 1, 1, 990, 0.25, 2); -- 10% less damage on players: tanky, so below Arms in PvP
 
 DELETE FROM `subclass_spell_swap` WHERE `path_id` = 1;
 INSERT INTO `subclass_spell_swap` (`path_id`, `spell`, `replacement`) VALUES
