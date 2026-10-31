@@ -52,6 +52,7 @@ private:
     Player* _maxNotGrayMember;
     uint8 _maxNotGrayMemberLevel;
     uint32 _count;
+    uint32 _xpShareCount;  // solo-wow: the alive members within reward distance who earn XP (not mentors)
     uint32 _aliveSumLevel;
     uint32 _sumLevel;
     uint32 _xp;
