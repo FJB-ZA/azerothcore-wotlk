@@ -1087,7 +1087,7 @@ bool Guardian::InitStatsForLevel(uint8 petlevel)
         }
     }
 
-    uint32 creature_ID = (petType == HUNTER_PET) ? 1 : cinfo->Entry;
+    uint32 creature_ID = (petType == HUNTER_PET) ? 1 : GetStatEntry();
 
     if (petType == HUNTER_PET)
     {
@@ -1195,7 +1195,7 @@ bool Guardian::InitStatsForLevel(uint8 petlevel)
                     SetBaseWeaponDamage(BASE_ATTACK, MAXDAMAGE, float(petlevel + (petlevel / 4)));
                 }
 
-                switch (GetEntry())
+                switch (GetStatEntry())
                 {
                     case NPC_WATER_ELEMENTAL_PERM:
                         {
@@ -1212,7 +1212,7 @@ bool Guardian::InitStatsForLevel(uint8 petlevel)
             }
         default:
             {
-                switch (GetEntry())
+                switch (GetStatEntry())
                 {
                     case NPC_FIRE_ELEMENTAL:
                         {
@@ -1404,7 +1404,7 @@ bool Guardian::InitStatsForLevel(uint8 petlevel)
     }
 
     // Can be summon and guardian
-    if (GetEntry() == NPC_RISEN_GHOUL)
+    if (GetStatEntry() == NPC_RISEN_GHOUL)
     {
         // 100% energy after summon
         SetPower(POWER_ENERGY, GetMaxPower(POWER_ENERGY));

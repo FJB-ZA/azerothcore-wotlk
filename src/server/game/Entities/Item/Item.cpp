@@ -1005,6 +1005,18 @@ bool Item::GemsFitSockets() const
     return true;
 }
 
+uint8 Item::GetPrismaticSocketCount() const
+{
+    SpellItemEnchantmentEntry const* enchant =
+        sSpellItemEnchantmentStore.LookupEntry(GetEnchantmentId(PRISMATIC_ENCHANTMENT_SLOT));
+    if (!enchant)
+        return 0;
+    for (uint8 i = 0; i < MAX_SPELL_ITEM_ENCHANTMENT_EFFECTS; ++i)
+        if (enchant->type[i] == ITEM_ENCHANTMENT_TYPE_PRISMATIC_SOCKET)
+            return uint8(std::min<uint32>(enchant->amount[i], MAX_GEM_SOCKETS));
+    return 0;
+}
+
 bool Item::HasSocket() const
 {
     // There can only be one socket added, and it's always in slot `PRISMATIC_ENCHANTMENT_SLOT`.

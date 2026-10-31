@@ -415,6 +415,12 @@ SpellMgr* SpellMgr::instance()
     return &instance;
 }
 
+void SpellMgr::SetBonusSchoolMask(uint32 spellId, uint32 schoolMask)
+{
+    if (SpellInfo* spellInfo = _GetSpellInfo(spellId))
+        spellInfo->BonusSchoolMask = schoolMask;
+}
+
 /// Some checks for spells, to prevent adding deprecated/broken spells for trainers, spell book, etc
 bool SpellMgr::ComputeIsSpellValid(SpellInfo const* spellInfo, bool msg)
 {

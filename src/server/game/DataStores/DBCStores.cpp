@@ -174,7 +174,7 @@ std::unordered_set<uint32> sPetTalentSpells;
 DBCStorage <TalentTabEntry> sTalentTabStore(TalentTabEntryfmt);
 
 // store absolute bit position for first rank for talent inspect
-static uint32 sTalentTabPages[MAX_CLASSES][3];
+static uint32 sTalentTabPages[MAX_CLASSES][MAX_TALENT_TABS];
 
 DBCStorage <TaxiNodesEntry> sTaxiNodesStore(TaxiNodesEntryfmt);
 TaxiMask sTaxiNodesMask;
@@ -535,6 +535,13 @@ void LoadDBCStores(std::string const& dataPath)
             if ((talentTabInfo->ClassMask & CLASSMASK_ALL_PLAYABLE) == 0)
                 continue;
 
+            if (talentTabInfo->tabpage >= MAX_TALENT_TABS)
+            {
+                LOG_ERROR("server.loading", "TalentTab {} is on page {}, past the last page {}; skipped.",
+                          talentTabId, talentTabInfo->tabpage, MAX_TALENT_TABS - 1);
+                continue;
+            }
+
             // store class talent tab pages
             for (uint32 cls = 1; cls < MAX_CLASSES; ++cls)
                 if (talentTabInfo->ClassMask & (1 << (cls - 1)))
@@ -841,6 +848,23 @@ PvPDifficultyEntry const* GetBattlegroundBracketById(uint32 mapid, BattlegroundB
 uint32 const* GetTalentTabPages(uint8 cls)
 {
     return sTalentTabPages[cls];
+}
+
+// solo-wow: set at startup (and on a sub-class path reload, on the world thread), read by the role helpers
+static std::unordered_map<uint32, TalentTabRole> sTalentTabRoles;
+
+void SetTalentTabRole(uint32 talentTabId, TalentTabRole role)
+{
+    if (role == TalentTabRole::None)
+        sTalentTabRoles.erase(talentTabId);
+    else
+        sTalentTabRoles[talentTabId] = role;
+}
+
+TalentTabRole GetTalentTabRole(uint32 talentTabId)
+{
+    auto const itr = sTalentTabRoles.find(talentTabId);
+    return itr != sTalentTabRoles.end() ? itr->second : TalentTabRole::None;
 }
 
 bool IsSharedDifficultyMap(uint32 mapid)

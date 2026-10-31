@@ -780,6 +780,9 @@ private:
 
     // Modifiers
 public:
+    /// solo-wow: lets a sub-class path's replacement spell take the bonuses of the spell it replaces.
+    void SetBonusSchoolMask(uint32 spellId, uint32 schoolMask);
+
     // Loading data at server startup
     void UnloadSpellInfoChains();
     void LoadSpellTalentRanks();

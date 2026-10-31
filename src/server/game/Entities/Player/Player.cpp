@@ -3977,6 +3977,51 @@ bool Player::resetTalents(bool noResetCost)
     return true;
 }
 
+uint32 Player::ResetTalentTab(uint32 talentTabId)
+{
+    uint32 refunded = 0;
+    for (PlayerTalentMap::iterator iter = m_talents.begin(); iter != m_talents.end(); )
+    {
+        PlayerTalentMap::iterator itr = iter++;
+        if (itr->second->State == PLAYERSPELL_REMOVED || !(itr->second->specMask & GetActiveSpecMask()))
+            continue;
+
+        TalentEntry const* talentInfo = sTalentStore.LookupEntry(itr->second->talentID);
+        TalentSpellPos const* talentPos = GetTalentSpellPos(itr->first);
+        SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(itr->first);
+        if (!talentInfo || talentInfo->TalentTab != talentTabId || !talentPos || !spellInfo)
+            continue;
+
+        _removeTalentAurasAndSpells(itr->first);
+
+        bool removed = false;
+        if (talentInfo->addToSpellBook)
+            if (!spellInfo->HasAttribute(SPELL_ATTR0_PASSIVE) && !spellInfo->HasEffect(SPELL_EFFECT_LEARN_SPELL))
+            {
+                removeSpell(itr->first, GetActiveSpecMask(), false);
+                removed = true;
+            }
+
+        if (!removed)
+            SendLearnPacket(itr->first, false);
+
+        for (uint8 i = 0; i < MAX_SPELL_EFFECTS; ++i)
+            if (spellInfo->Effects[i].Effect == SPELL_EFFECT_LEARN_SPELL)
+                if (sSpellMgr->IsAdditionalTalentSpell(spellInfo->Effects[i].TriggerSpell))
+                    removeSpell(spellInfo->Effects[i].TriggerSpell, GetActiveSpecMask(), false);
+
+        refunded += talentPos->rank + 1;
+        _removeTalent(itr, GetActiveSpecMask());
+    }
+
+    if (refunded)
+    {
+        m_usedTalentCount = m_usedTalentCount > refunded ? m_usedTalentCount - refunded : 0;
+        InitTalentForLevel();
+    }
+    return refunded;
+}
+
 void Player::SetFreeTalentPoints(uint32 points)
 {
     sScriptMgr->OnPlayerFreeTalentPointsChanged(this, points);
@@ -16452,7 +16497,12 @@ uint32 Player::GetSpec(int8 spec)
 
 bool Player::HasTankSpec()
 {
-    switch (GetSpec())
+    uint32 const spec = GetSpec();
+    // solo-wow: a sub-class path's own tree says its role itself
+    if (TalentTabRole const role = GetTalentTabRole(spec); role != TalentTabRole::None)
+        return role == TalentTabRole::Tank;
+
+    switch (spec)
     {
         case TALENT_TREE_WARRIOR_PROTECTION:
         case TALENT_TREE_PALADIN_PROTECTION:
@@ -16470,7 +16520,12 @@ bool Player::HasTankSpec()
 
 bool Player::HasMeleeSpec()
 {
-    switch (GetSpec(GetActiveSpec()))
+    uint32 const spec = GetSpec(GetActiveSpec());
+    // solo-wow: a sub-class path's own tree says its role itself
+    if (TalentTabRole const role = GetTalentTabRole(spec); role != TalentTabRole::None)
+        return role == TalentTabRole::Melee;
+
+    switch (spec)
     {
         case TALENT_TREE_WARRIOR_ARMS:
         case TALENT_TREE_WARRIOR_FURY:
@@ -16493,7 +16548,12 @@ bool Player::HasMeleeSpec()
 
 bool Player::HasCasterSpec()
 {
-    switch (GetSpec(GetActiveSpec()))
+    uint32 const spec = GetSpec(GetActiveSpec());
+    // solo-wow: a sub-class path's own tree says its role itself
+    if (TalentTabRole const role = GetTalentTabRole(spec); role != TalentTabRole::None)
+        return role == TalentTabRole::Caster;
+
+    switch (spec)
     {
         case TALENT_TREE_PRIEST_SHADOW:
         case TALENT_TREE_SHAMAN_ELEMENTAL:
@@ -16516,7 +16576,12 @@ bool Player::HasCasterSpec()
 
 bool Player::HasHealSpec()
 {
-    switch (GetSpec(GetActiveSpec()))
+    uint32 const spec = GetSpec(GetActiveSpec());
+    // solo-wow: a sub-class path's own tree says its role itself
+    if (TalentTabRole const role = GetTalentTabRole(spec); role != TalentTabRole::None)
+        return role == TalentTabRole::Healer;
+
+    switch (spec)
     {
         case TALENT_TREE_PALADIN_HOLY:
         case TALENT_TREE_PRIEST_DISCIPLINE:
