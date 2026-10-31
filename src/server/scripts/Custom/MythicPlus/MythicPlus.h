@@ -46,26 +46,26 @@ inline constexpr uint32 ServantEntry = 990922;
 inline constexpr uint32 RuneEntry = 990923;
 inline constexpr uint32 FontOfPowerEntry = 990920;
 inline constexpr uint32 CacheEntry = 990921;
-inline constexpr uint32 KeystoneItem = 990300;
-// Crafted by Blacksmiths (spell 990314); the forge takes one per socket
-inline constexpr uint32 SocketKitItem = 990301;
+inline constexpr uint32 KeystoneItem = 990900;
+// Crafted by Blacksmiths (spell 990914); the forge takes one per socket
+inline constexpr uint32 SocketKitItem = 990901;
 // Prismatic socket enchants by how many sockets they add: Socket Staff, then two of solo-wow's spell data
 inline constexpr std::array<uint32, MaxSockets + 1> PrismaticSocketEnchants = {0, 3848, 3990, 3991};
 
 // Spells (solo-wow patches/client/spell-data/40-mythic-plus.json)
-inline constexpr uint32 SpellShatteringGround = 990300;
-inline constexpr uint32 SpellVolcanicPlume = 990301;
-inline constexpr uint32 SpellCreepingShadow = 990302;
-inline constexpr uint32 SpellSanguineIchor = 990303;
-inline constexpr uint32 SpellBolstered = 990304;
-inline constexpr uint32 SpellRaging = 990305;
-inline constexpr uint32 SpellNecroticRot = 990306;
-inline constexpr uint32 SpellGrievousWound = 990307;
-inline constexpr uint32 SpellBurst = 990308;
-inline constexpr uint32 SpellExplosion = 990309;
-inline constexpr uint32 SpellQuake = 990310;
-inline constexpr uint32 SpellShadowNova = 990312;
-inline constexpr uint32 SpellEmpowered = 990313;
+inline constexpr uint32 SpellShatteringGround = 990900;
+inline constexpr uint32 SpellVolcanicPlume = 990901;
+inline constexpr uint32 SpellCreepingShadow = 990902;
+inline constexpr uint32 SpellSanguineIchor = 990903;
+inline constexpr uint32 SpellBolstered = 990904;
+inline constexpr uint32 SpellRaging = 990905;
+inline constexpr uint32 SpellNecroticRot = 990906;
+inline constexpr uint32 SpellGrievousWound = 990907;
+inline constexpr uint32 SpellBurst = 990908;
+inline constexpr uint32 SpellExplosion = 990909;
+inline constexpr uint32 SpellQuake = 990910;
+inline constexpr uint32 SpellShadowNova = 990912;
+inline constexpr uint32 SpellEmpowered = 990913;
 
 // How long each ground spell lasts, so the rune casting it outlives it
 inline constexpr uint32 CircleMs = 3500;
