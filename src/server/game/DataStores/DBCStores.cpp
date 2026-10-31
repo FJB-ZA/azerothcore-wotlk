@@ -845,6 +845,23 @@ uint32 const* GetTalentTabPages(uint8 cls)
     return sTalentTabPages[cls];
 }
 
+// solo-wow: set at startup (and on a sub-class path reload, on the world thread), read by the role helpers
+static std::unordered_map<uint32, TalentTabRole> sTalentTabRoles;
+
+void SetTalentTabRole(uint32 talentTabId, TalentTabRole role)
+{
+    if (role == TalentTabRole::None)
+        sTalentTabRoles.erase(talentTabId);
+    else
+        sTalentTabRoles[talentTabId] = role;
+}
+
+TalentTabRole GetTalentTabRole(uint32 talentTabId)
+{
+    auto const itr = sTalentTabRoles.find(talentTabId);
+    return itr != sTalentTabRoles.end() ? itr->second : TalentTabRole::None;
+}
+
 bool IsSharedDifficultyMap(uint32 mapid)
 {
     return sWorld->getBoolConfig(CONFIG_INSTANCE_SHARED_ID) && (mapid == 631 || mapid == 724);
