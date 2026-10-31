@@ -113,12 +113,31 @@ bool HasInSlot(Player* player, uint32 spellId, uint8 group)
     return itr != spells.end() && itr->second->State != PLAYERSPELL_REMOVED && itr->second->IsInSpec(group);
 }
 
+// Teaches a spell to the slots in `mask`. A spell a skill teaches (Battle Stance) is held as temporary, and addSpell
+// leaves a temporary spell alone, so one a path took out of the slot gets the slot back here instead.
+void GiveSpell(Player* player, uint32 spellId, uint8 mask)
+{
+    PlayerSpellMap const& spells = player->GetSpellMap();
+    auto const itr = spells.find(spellId);
+    if (itr != spells.end() && itr->second->State == PLAYERSPELL_TEMPORARY)
+    {
+        if ((itr->second->specMask & mask) == mask)
+            return;
+        itr->second->specMask |= mask;
+        itr->second->Active = true;
+        player->SendLearnPacket(spellId, true);
+        return;
+    }
+    if (player->addSpell(spellId, mask, true))
+        player->SendLearnPacket(spellId, true);
+}
+
 void MoveSpell(Player* player, uint32 from, bool hasFrom, uint32 to, bool hasTo, uint8 mask)
 {
     if (hasFrom)
         player->removeSpell(from, mask, false);
-    if (!hasTo && player->addSpell(to, mask, true))
-        player->SendLearnPacket(to, true);
+    if (!hasTo)
+        GiveSpell(player, to, mask);
 }
 
 // Puts the active slot's action bar on the spells the slot now knows: replacements for originals on a path, and
@@ -187,8 +206,7 @@ void Reconcile(Player* player)
                 }
                 else if (move == SubclassPaths::SpellMove::GiveOriginal)
                 {
-                    if (player->addSpell(swap.original, mask, true))
-                        player->SendLearnPacket(swap.original, true);
+                    GiveSpell(player, swap.original, mask);
                     taken.erase(swap.original);
                     CharacterDatabase.DirectExecute("DELETE FROM character_subclass_taken WHERE guid = {} AND talent_group = {} "
                                                     "AND spell = {}", guid, group, swap.original);
