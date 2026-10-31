@@ -138,16 +138,9 @@ DELETE FROM `creature_questender` WHERE `quest` IN (990370, 990371);
 INSERT INTO `creature_questender` (`id`, `quest`) VALUES
 (990370, 990370), (990371, 990370), (990370, 990371), (990371, 990371);
 
--- The Grave Ledger: a readable book, copied from An Unopened Tome of Advice (37674) with an old-book look (9165)
-DELETE FROM `item_template` WHERE `entry` = 990370;
-DROP TEMPORARY TABLE IF EXISTS `necromancer_book`;
-CREATE TEMPORARY TABLE `necromancer_book` AS SELECT * FROM `item_template` WHERE `entry` = 37674;
-UPDATE `necromancer_book` SET `entry` = 990370, `name` = 'The Grave Ledger', `displayid` = 9165, `Quality` = 1,
-  `bonding` = 1, `PageText` = 990370, `PageMaterial` = 1, `LanguageID` = 0, `startquest` = 0, `stackable` = 1,
-  `maxcount` = 1, `BuyPrice` = 0, `SellPrice` = 0,
-  `description` = 'Kept by those who answer the dead.';
-INSERT INTO `item_template` SELECT * FROM `necromancer_book`;
-DROP TEMPORARY TABLE `necromancer_book`;
+-- The Grave Ledger (item 990370), a readable book copied from An Unopened Tome of Advice (37674) with an old-book look
+-- (9165), is in solo-wow's spell data (patches/client/spell-data/subclasses/necromancer-items.json): its generated SQL
+-- owns every item in 990000-990999. Its pages stay here.
 
 DELETE FROM `page_text` WHERE `ID` BETWEEN 990370 AND 990372;
 INSERT INTO `page_text` (`ID`, `Text`, `NextPageID`) VALUES
