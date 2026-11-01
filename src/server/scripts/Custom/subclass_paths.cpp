@@ -638,7 +638,16 @@ uint16 ActivePathId(Player const* player)
 
 uint32 NextChangeFee(Player* player) { return FeeFor(PathsOf(player), uint32(GameTime::GetGameTime().count())); }
 
-std::string ChangeActivePath(Player* player, uint16 pathId, bool free) { return ChangePath(player, pathId, free); }
+void KeepPath(Player* player) { PathsOf(player)->randomBot = false; }
+
+// A path set on purpose stands, or a random bot's next sweep would undo the choice
+std::string ChangeActivePath(Player* player, uint16 pathId, bool free)
+{
+    std::string const why = ChangePath(player, pathId, free);
+    if (why.empty())
+        KeepPath(player);
+    return why;
+}
 }
 
 class SubclassPathsWorldScript : public WorldScript

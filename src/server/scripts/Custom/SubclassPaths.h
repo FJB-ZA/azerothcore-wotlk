@@ -80,6 +80,10 @@ uint32 NextChangeFee(Player* player);
 // refused, or empty
 std::string ChangeActivePath(Player* player, uint16 pathId, bool free = false);
 
+// Keeps the player's paths as they are while they stay logged in: a random bot stops picking its own (which would
+// move a plain bot onto a path and reset its talents). A path change through ChangeActivePath does this too.
+void KeepPath(Player* player);
+
 // How many bodies share this minion's health and melee: the pet and the extra bodies summoned with it, or 1
 uint8 MeleeBodies(Unit const* minion);
 }
