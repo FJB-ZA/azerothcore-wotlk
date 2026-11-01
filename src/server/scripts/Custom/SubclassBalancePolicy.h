@@ -66,7 +66,25 @@ struct Side
     uint32_t deaths = 0;
     double spreadPct = 0;   // its fights' damage per second, the sample standard deviation as a share of the mean
     double errorPct = 0;    // the same for the mean itself: the standard error
+    double takenErrorPct = 0;  // the standard error of its fights' damage taken per second, as a share of their mean
 };
+
+// The standard error of the mean of `values`, as a share of that mean in percent
+inline double ErrorPct(std::vector<double> const& values)
+{
+    double const n = double(values.size());
+    if (n < 2)
+        return 0.0;
+    double sum = 0, squares = 0;
+    for (double value : values)
+    {
+        sum += value;
+        squares += value * value;
+    }
+    double const mean = sum / n;
+    double const variance = std::max(0.0, (squares - n * mean * mean) / (n - 1));
+    return mean > 0 ? std::sqrt(variance) / mean * 100.0 / std::sqrt(n) : 0.0;
+}
 
 inline Side Summarize(std::vector<Fight> const& fights)
 {
@@ -94,6 +112,10 @@ inline Side Summarize(std::vector<Fight> const& fights)
     double const variance = n > 1 ? std::max(0.0, (squares - n * side.dps * side.dps) / (n - 1)) : 0.0;
     side.spreadPct = side.dps > 0 ? std::sqrt(variance) / side.dps * 100.0 : 0.0;
     side.errorPct = side.spreadPct / std::sqrt(n);
+    std::vector<double> takenPerSecond;
+    for (Fight const& fight : fights)
+        takenPerSecond.push_back(PerSecond(fight.taken, fight.ms));
+    side.takenErrorPct = ErrorPct(takenPerSecond);
     return side;
 }
 
@@ -113,26 +135,41 @@ constexpr char const* VerdictName(Verdict verdict)
     return "?";
 }
 
+// A path whose design puts it at a set share of a plain spec's damage, not level with it, is held to that band instead
+// of to the budget (the Gladiator: 75-90% of Fury's, a tanky damage spec). Its damage taken isn't judged then: taking
+// less is part of such a design.
+struct Band
+{
+    double lowPct = 0, highPct = 0;  // the path's damage per second, in percent of the plain side's
+};
+
+constexpr bool HasBand(Band const& band) { return band.highPct > 0; }
+
 struct Comparison
 {
     Side plain, path;
+    Band band;
     double dpsDiffPct = 0;
+    double sharePct = 0;    // the path's damage per second, in percent of the plain side's
     double marginPct = 0;   // how far the true difference may be from dpsDiffPct, in percent of the plain class's
     double takenDiffPct = 0;
+    double takenMarginPct = 0;  // the same for takenDiffPct
     Verdict verdict = Verdict::Inconclusive;
     std::string why;  // what failed or kept it from a verdict, empty on a pass
 };
 
 // A damage scenario (the dummy or the pack): both sides' damage and damage taken within the budget. A fight's damage
 // varies with crits and procs, so the difference between the two means carries a margin of Confidence standard
-// errors: it passes when the whole margin is inside the budget and fails when the whole margin is past it. Between
-// the two, too few fights, or a side that never dealt damage, there is no verdict: run more fights.
-inline Comparison Compare(std::vector<Fight> const& plainFights, std::vector<Fight> const& pathFights)
+// errors: it passes when the whole margin is inside the budget (or the band) and fails when the whole margin is past
+// it. Between the two, too few fights, or a side that never dealt damage, there is no verdict: run more fights.
+inline Comparison Compare(std::vector<Fight> const& plainFights, std::vector<Fight> const& pathFights, Band band = {})
 {
     Comparison c;
     c.plain = Summarize(plainFights);
     c.path = Summarize(pathFights);
+    c.band = band;
     c.dpsDiffPct = DiffPct(c.path.dps, c.plain.dps);
+    c.sharePct = 100.0 + c.dpsDiffPct;
     c.takenDiffPct = DiffPct(c.path.takenPerSecond, c.plain.takenPerSecond);
     if (c.plain.fights < MinFights || c.path.fights < MinFights)
         c.why = "fewer than " + std::to_string(MinFights) + " fights a side";
@@ -142,14 +179,40 @@ inline Comparison Compare(std::vector<Fight> const& plainFights, std::vector<Fig
         return c;
     double const plainError = c.plain.errorPct / 100.0 * c.plain.dps, pathError = c.path.errorPct / 100.0 * c.path.dps;
     c.marginPct = Confidence * std::sqrt(plainError * plainError + pathError * pathError) / c.plain.dps * 100.0;
-    double const damage = std::fabs(c.dpsDiffPct);
+    if (c.plain.takenPerSecond > 0)
+    {
+        double const plainTaken = c.plain.takenErrorPct / 100.0 * c.plain.takenPerSecond,
+                     pathTaken = c.path.takenErrorPct / 100.0 * c.path.takenPerSecond;
+        c.takenMarginPct = Confidence * std::sqrt(plainTaken * plainTaken + pathTaken * pathTaken) /
+                           c.plain.takenPerSecond * 100.0;
+    }
+    if (HasBand(band))
+    {
+        if (c.sharePct + c.marginPct < band.lowPct)
+            c.why = "damage under the band";
+        else if (c.sharePct - c.marginPct > band.highPct)
+            c.why = "damage over the band";
+        else if (c.path.deaths > c.plain.deaths)
+            c.why = "the path died more";
+        else if (c.sharePct - c.marginPct < band.lowPct || c.sharePct + c.marginPct > band.highPct)
+        {
+            c.why = "too close to the band's edge for " + std::to_string(std::min(c.plain.fights, c.path.fights)) +
+                    " fights; run more";
+            return c;
+        }
+        c.verdict = c.why.empty() ? Verdict::Pass : Verdict::Fail;
+        return c;
+    }
+    // Damage taken varies from fight to fight too (more so in a pack's short fights): it carries its own margin
+    double const damage = std::fabs(c.dpsDiffPct), taken = std::fabs(c.takenDiffPct);
+    bool const judgeTaken = c.plain.takenPerSecond > 0;
     if (damage - c.marginPct > BudgetPct)
         c.why = "damage outside the budget";
-    else if (c.plain.takenPerSecond > 0 && std::fabs(c.takenDiffPct) > BudgetPct)
+    else if (judgeTaken && taken - c.takenMarginPct > BudgetPct)
         c.why = "damage taken outside the budget";
     else if (c.path.deaths > c.plain.deaths)
         c.why = "the path died more";
-    else if (damage + c.marginPct > BudgetPct)
+    else if (damage + c.marginPct > BudgetPct || (judgeTaken && taken + c.takenMarginPct > BudgetPct))
     {
         c.why = "too close to the budget for " + std::to_string(std::min(c.plain.fights, c.path.fights)) +
                 " fights; run more";
@@ -228,7 +291,12 @@ inline std::string TableRow(Row const& row, Comparison const& c)
 {
     return "| " + row.date + " | " + std::to_string(row.level) + " | " + row.spec + " | " + ScenarioName(row.scenario) +
            " | " + Fixed(c.plain.dps, "%.1f") + " DPS | " + Fixed(c.path.dps, "%.1f") + " DPS | " +
-           Signed(c.dpsDiffPct) + " ± " + Fixed(c.marginPct, "%.1f%%") + " | " + Signed(c.takenDiffPct) + " | " + Fixed(c.plain.petShare * 100, "%.0f%%") +
+           (HasBand(c.band) ? Fixed(c.sharePct, "%.1f%%") + " ± " + Fixed(c.marginPct, "%.1f%%") + " of plain (band " +
+                                  Fixed(c.band.lowPct, "%.0f") + "-" + Fixed(c.band.highPct, "%.0f%%") + ")"
+                            : Signed(c.dpsDiffPct) + " ± " + Fixed(c.marginPct, "%.1f%%")) +
+           " | " + Signed(c.takenDiffPct) +
+           (c.plain.takenPerSecond > 0 ? " ± " + Fixed(c.takenMarginPct, "%.1f%%") : std::string()) + " | " +
+           Fixed(c.plain.petShare * 100, "%.0f%%") +
            " / " + Fixed(c.path.petShare * 100, "%.0f%%") + " | " + VerdictCell(c.verdict, c.why) + " |\n";
 }
 
