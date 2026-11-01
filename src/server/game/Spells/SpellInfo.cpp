@@ -1412,7 +1412,8 @@ bool SpellInfo::IsAuraExclusiveBySpecificWith(SpellInfo const* spellInfo) const
 
     switch (spellSpec1)
     {
-        case SPELL_SPECIFIC_TRACKER:
+        // solo-wow: tracking spells stack, as in retail (herbs, minerals and a creature type at once); casting an
+        // active one turns it off (WorldSession::HandleCastSpellOpcode)
         case SPELL_SPECIFIC_WARLOCK_ARMOR:
         case SPELL_SPECIFIC_MAGE_ARMOR:
         case SPELL_SPECIFIC_ELEMENTAL_SHIELD:

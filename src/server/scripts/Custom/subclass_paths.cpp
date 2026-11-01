@@ -309,12 +309,22 @@ void Load(Player* player)
     data->loaded = true;
 }
 
-std::string Refusal(SubclassPaths::ChangeCheck check, Path const* wanted, uint32 fee)
+// "That path belongs to another class." plus the class's own paths, so a wrong id points to the right one
+std::string WrongClassRefusal(uint8 classId)
+{
+    std::string ids;
+    for (Path const* path : SubclassPaths::ClassPaths(classId))
+        ids += (ids.empty() ? "" : ", ") + std::to_string(path->id) + " " + path->name;
+    return ids.empty() ? "That path belongs to another class, and yours has none." :
+                         "That path belongs to another class. Yours: " + ids + ".";
+}
+
+std::string Refusal(SubclassPaths::ChangeCheck check, Path const* wanted, uint32 fee, uint8 classId)
 {
     switch (check)
     {
         case SubclassPaths::ChangeCheck::SamePath: return "This spec slot already follows that path.";
-        case SubclassPaths::ChangeCheck::WrongClass: return "That path belongs to another class.";
+        case SubclassPaths::ChangeCheck::WrongClass: return WrongClassRefusal(classId);
         case SubclassPaths::ChangeCheck::TooLow:
             return "That path opens at level " + std::to_string(wanted ? wanted->rules.unlockLevel : 0) + ".";
         case SubclassPaths::ChangeCheck::NotYetInEra: return "That path hasn't reached this world yet.";
@@ -358,7 +368,7 @@ std::string ChangePath(Player* player, uint16 wanted, bool free)
         data->group[group], wanted, path ? path->rules : SubclassPaths::PathRules{}, player->getClass(), player->GetLevel(),
         player->GetSession()->Expansion(), unlocked, player->IsInCombat(), player->InArena(), player->GetMoney(), fee);
     if (check != SubclassPaths::ChangeCheck::Ok)
-        return Refusal(check, path, fee);
+        return Refusal(check, path, fee, player->getClass());
 
     if (fee)
     {
@@ -628,7 +638,16 @@ uint16 ActivePathId(Player const* player)
 
 uint32 NextChangeFee(Player* player) { return FeeFor(PathsOf(player), uint32(GameTime::GetGameTime().count())); }
 
-std::string ChangeActivePath(Player* player, uint16 pathId) { return ChangePath(player, pathId, false); }
+void KeepPath(Player* player) { PathsOf(player)->randomBot = false; }
+
+// A path set on purpose stands, or a random bot's next sweep would undo the choice
+std::string ChangeActivePath(Player* player, uint16 pathId, bool free)
+{
+    std::string const why = ChangePath(player, pathId, free);
+    if (why.empty())
+        KeepPath(player);
+    return why;
+}
 }
 
 class SubclassPathsWorldScript : public WorldScript

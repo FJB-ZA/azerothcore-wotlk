@@ -13,6 +13,7 @@
 #include "Creature.h"
 #include "GossipDef.h"
 #include "Player.h"
+#include "QuestDef.h"
 #include "ScriptMgr.h"
 #include "ScriptedGossip.h"
 #include "SubclassPaths.h"
@@ -64,6 +65,23 @@ public:
         if (std::string const reason = SubclassPaths::ChangeActivePath(player, pathId); !reason.empty())
             ChatHandler(player->GetSession()).SendNotification(reason);
         return true;
+    }
+
+    // A path's unlock quest, handed in here, puts a plain active slot on that path for free
+    bool OnQuestReward(Player* player, Creature* /*creature*/, Quest const* quest, uint32 /*opt*/) override
+    {
+        if (SubclassPaths::ActivePathId(player) != SubclassPaths::PlainClass)
+            return false;
+        for (SubclassPaths::Path const* path : SubclassPaths::ClassPaths(player->getClass()))
+        {
+            if (path->unlockQuest != quest->GetQuestId())
+                continue;
+            if (SubclassPaths::ChangeActivePath(player, path->id, true).empty())
+                ChatHandler(player->GetSession())
+                    .PSendSysMessage("Your spec slot {} now follows the {} path.", player->GetActiveSpec() + 1, path->name);
+            break;
+        }
+        return false;
     }
 };
 
