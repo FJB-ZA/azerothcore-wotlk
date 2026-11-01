@@ -27,6 +27,7 @@ inline constexpr double BudgetPct = 5.0;        // the path's output and damage 
 inline constexpr uint32_t MinFights = 3;        // fights of each side before a scenario can pass
 inline constexpr uint32_t MaxFights = 8;        // a run still undecided after this many stays inconclusive
 inline constexpr double Confidence = 2.0;       // standard errors either side of the difference: about 95%
+inline constexpr uint32_t PackSize = 5;        // the pack scenario's mobs, unless a run asks for another
 inline constexpr uint32_t MinDuels = 10;
 inline constexpr double DuelLow = 0.40;         // the path's share of duels won, inside these
 inline constexpr double DuelHigh = 0.60;
@@ -222,6 +223,16 @@ inline Comparison Compare(std::vector<Fight> const& plainFights, std::vector<Fig
     return c;
 }
 
+// A pack the plain class dies to in most fights measures nothing: the path dying too, or not, is the bots' luck.
+// Empty when the plain side lived through at least half its fights; else why the run isn't measured
+inline std::string PackUnfit(Side const& plain)
+{
+    if (plain.deaths * 2 <= plain.fights)
+        return "";
+    return "the pack kills the plain class too (dead in " + std::to_string(plain.deaths) + " of " +
+           std::to_string(plain.fights) + " fights): a smaller pack measures it";
+}
+
 // Whether a run that has fought `fought` fights a side should fight another: only while its answer is still open
 inline bool FightOn(Comparison const& c, uint32_t fought, uint32_t cap = MaxFights)
 {
@@ -260,7 +271,13 @@ struct Row
     uint8_t level = 0;
     std::string spec;   // the talent build both sides used
     Scenario scenario = Scenario::Dummy;
+    uint32_t packSize = PackSize;
 };
+
+inline std::string RowScenario(Row const& row)
+{
+    return row.scenario == Scenario::Pack ? std::to_string(row.packSize) + "-mob pack" : ScenarioName(row.scenario);
+}
 
 inline std::string TableHeader()
 {
@@ -289,7 +306,7 @@ inline std::string VerdictCell(Verdict verdict, std::string const& why)
 
 inline std::string TableRow(Row const& row, Comparison const& c)
 {
-    return "| " + row.date + " | " + std::to_string(row.level) + " | " + row.spec + " | " + ScenarioName(row.scenario) +
+    return "| " + row.date + " | " + std::to_string(row.level) + " | " + row.spec + " | " + RowScenario(row) +
            " | " + Fixed(c.plain.dps, "%.1f") + " DPS | " + Fixed(c.path.dps, "%.1f") + " DPS | " +
            (HasBand(c.band) ? Fixed(c.sharePct, "%.1f%%") + " ± " + Fixed(c.marginPct, "%.1f%%") + " of plain (band " +
                                   Fixed(c.band.lowPct, "%.0f") + "-" + Fixed(c.band.highPct, "%.0f%%") + ")"
@@ -302,7 +319,7 @@ inline std::string TableRow(Row const& row, Comparison const& c)
 
 inline std::string TableRow(Row const& row, DuelResult const& d)
 {
-    return "| " + row.date + " | " + std::to_string(row.level) + " | " + row.spec + " | " + ScenarioName(row.scenario) +
+    return "| " + row.date + " | " + std::to_string(row.level) + " | " + row.spec + " | " + RowScenario(row) +
            " | " + std::to_string(d.plainWins) + " won | " + std::to_string(d.pathWins) + " won | " +
            Fixed(WinShare(d.pathWins, d.plainWins) * 100, "%.0f%%") + " path | " + std::to_string(d.draws) +
            " draws | | " + VerdictCell(d.verdict, d.why) + " |\n";
