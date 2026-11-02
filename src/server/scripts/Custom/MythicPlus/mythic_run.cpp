@@ -177,7 +177,7 @@ std::string NoKeyReason(Player* player)
     Keystone const key = GetKeystone(player);
     if (!key.map)
         return "No one here holds a keystone. The Keystone Master in Dalaran gives you one.";
-    return "Your keystone is for " + KeyName(key) + ", and no bot in your group holds one for this dungeon.";
+    return "Your keystone is for " + KeyName(key) + ", and no one else in your group holds one for this dungeon.";
 }
 
 // Completion runs inside Unit::Kill, so swapping gear waits; the event dies with the bot if it logs out first
@@ -374,6 +374,9 @@ bool IsBot(Player* player)
 
 std::string ActivateKey(Player* player, GameObject* font, uint32 holderLow)
 {
+    // The gossip needs a living player, and so does the addon's message
+    if (!player->IsAlive())
+        return "You can't do that while dead.";
     Map* map = font->GetMap();
     if (std::string const reason = FontRefusal(map); !reason.empty())
         return reason;
@@ -386,7 +389,8 @@ std::string ActivateKey(Player* player, GameObject* font, uint32 holderLow)
             return {};
         }
     }
-    return NoKeyReason(player);
+    // Someone held it when the list was shown; with no key left in the group, say why instead
+    return KeyHolders(player, map).empty() ? NoKeyReason(player) : "That keystone is no longer in your group.";
 }
 
 bool IsBoss(Creature* creature)
