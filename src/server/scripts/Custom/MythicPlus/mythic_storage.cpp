@@ -196,11 +196,11 @@ uint32 AwardCrests(Player* player, Crest crest, uint32 amount)
     return added;
 }
 
-Crest PayCrests(Player* player, uint8 rank)
+Crest PayCrests(Player* player, Crest lowest)
 {
     PlayerMythicData* data = DataOf(player);
     CrestWallet wallet = data->owned;
-    Crest const paid = PayForRank(wallet, rank);
+    Crest const paid = PayWithCrest(wallet, lowest);
     if (paid == Crest::None)
         return paid;
     data->owned = wallet;

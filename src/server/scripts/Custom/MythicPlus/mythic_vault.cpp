@@ -9,11 +9,13 @@
 
 #include <algorithm>
 #include <array>
+#include <list>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "DatabaseEnv.h"
+#include "Map.h"
 #include "MythicItemPolicy.h"
 #include "MythicPlus.h"
 #include "ObjectMgr.h"
@@ -24,8 +26,9 @@
 // The Great Vault (MythicVaultPolicy.h), as retail's: rows Raids, Dungeons and World of three slots, unlocked by the
 // week's activity. The week after, each unlocked slot offers one item, rolled the first time the vault is looked at
 // and kept in mythic_plus_vault_option (characters SQL 2026_11_02_00_mythic_plus_vault.sql); the player takes one of
-// them at the Keystone Master. The Dungeons row counts the week's keystones (mythic_plus_runs); Raids and World stay
-// locked until they count anything (mythic_plus_vault_activity).
+// them at the Keystone Master. The Dungeons row counts the week's keystones (mythic_plus_runs); the Raids row the
+// week's Wrath raid bosses, each once (mythic_plus_vault_activity), and gives a Raid 0 item from the raid and
+// difficulty of its slot's kill. World stays locked until it counts anything.
 namespace MythicPlus
 {
 namespace
@@ -73,6 +76,62 @@ DungeonWeek ReadDungeonWeek(Player* player, uint32 week)
     dungeons.runs = uint32(levels.size());
     dungeons.levels = NthBest(std::move(levels), VaultRow::Dungeon);
     return dungeons;
+}
+
+// A week's raid bosses: how many, each Raids slot's item level (0 while locked), and each kill's raid and difficulty
+struct RaidWeek
+{
+    uint32 kills = 0;
+    std::array<uint16, VaultSlots> levels{};
+    std::vector<RaidLoot> loot;
+};
+
+RaidWeek ReadRaidWeek(Player* player, uint32 week)
+{
+    RaidWeek raids;
+    std::vector<uint16> levels;
+    if (QueryResult result = CharacterDatabase.Query("SELECT map, difficulty FROM mythic_plus_vault_activity WHERE "
+                                                     "guid = {} AND week = {} AND `row` = {}",
+                                                     player->GetGUID().GetCounter(), week, uint32(VaultRow::Raid)))
+    {
+        do
+        {
+            Field* fields = result->Fetch();
+            RaidLoot const kill{fields[0].Get<uint16>(), fields[1].Get<uint8>()};
+            if (uint16 const level = RaidItemLevel(kill.map, kill.difficulty))
+            {
+                levels.push_back(level);
+                raids.loot.push_back(kill);
+            }
+        } while (result->NextRow());
+    }
+    raids.kills = uint32(levels.size());
+    raids.levels = NthBest(std::move(levels), VaultRow::Raid);
+    return raids;
+}
+
+// The raids and difficulties of the week's kills that give `itemLevel`, a Raids slot's loot: the slot's kill and any
+// other kill tied with it
+std::vector<RaidLoot> LootAt(RaidWeek const& raids, uint16 itemLevel)
+{
+    std::vector<RaidLoot> loot;
+    for (RaidLoot const& kill : raids.loot)
+        if (RaidItemLevel(kill.map, kill.difficulty) == itemLevel &&
+            std::none_of(loot.begin(), loot.end(), [&](RaidLoot const& known)
+                         { return known.map == kill.map && known.difficulty == kill.difficulty; }))
+            loot.push_back(kill);
+    return loot;
+}
+
+struct VaultWeek
+{
+    DungeonWeek dungeons;
+    RaidWeek raids;
+};
+
+VaultWeek ReadWeek(Player* player, uint32 week)
+{
+    return VaultWeek{ReadDungeonWeek(player, week), ReadRaidWeek(player, week)};
 }
 
 // A week whose vault was opened the old way, a single item, counts as chosen too
@@ -140,15 +199,23 @@ uint32 ItemLevelOf(uint32 itemId)
     return item ? item->ItemLevel : 0;
 }
 
-// Raids and World count nothing yet, so only a keystone unlocks a slot; the best key fills slot 1 first
-bool AnyUnlocked(DungeonWeek const& dungeons)
+// World counts nothing yet, so a keystone or a raid boss unlocks a slot; the best fills slot 1 first
+bool AnyUnlocked(VaultWeek const& vault)
 {
-    return dungeons.levels[0] != 0;
+    return vault.dungeons.levels[0] != 0 || vault.raids.levels[0] != 0;
 }
 
-// `week`'s options, whether or not one was chosen: each unlocked slot without one yet rolls it, from the week's
-// dungeons at its key's rank
-std::vector<VaultOption> RollOptions(Player* player, uint32 week, DungeonWeek const& dungeons)
+void StoreOption(uint32 guid, uint32 week, VaultRow row, uint8 slot, uint32 item)
+{
+    // IGNORE: a roll stored first stays, so the options never change once seen
+    CharacterDatabase.DirectExecute("INSERT IGNORE INTO mythic_plus_vault_option (guid, week, `row`, slot, item, "
+                                    "chosen) VALUES ({}, {}, {}, {}, {}, 0)",
+                                    guid, week, uint32(row), slot, item);
+}
+
+// `week`'s options, whether or not one was chosen: each unlocked slot without one yet rolls it, a Dungeons slot from
+// the week's dungeons at its key's rank, a Raids slot from its kill's raid and difficulty at Raid 0
+std::vector<VaultOption> RollOptions(Player* player, uint32 week, VaultWeek const& vault)
 {
     uint32 const guid = player->GetGUID().GetCounter();
     std::vector<VaultOption> options = StoredOptions(guid, week);
@@ -156,17 +223,25 @@ std::vector<VaultOption> RollOptions(Player* player, uint32 week, DungeonWeek co
     bool rolled = false;
     for (uint8 slot = 1; slot <= VaultSlots; ++slot)
     {
-        uint8 const level = uint8(dungeons.levels[slot - 1]);
+        uint8 const level = uint8(vault.dungeons.levels[slot - 1]);
         if (!level || HasOption(options, VaultRow::Dungeon, slot))
             continue;
         if (maps.empty())
             maps = WeekMaps(guid, week);
         if (uint32 const item = RollItemAtRank(player, maps, VaultRankForKey(level)))
         {
-            // IGNORE: a roll stored first stays, so the options never change once seen
-            CharacterDatabase.DirectExecute("INSERT IGNORE INTO mythic_plus_vault_option (guid, week, `row`, slot, "
-                                            "item, chosen) VALUES ({}, {}, {}, {}, {}, 0)",
-                                            guid, week, uint32(VaultRow::Dungeon), slot, item);
+            StoreOption(guid, week, VaultRow::Dungeon, slot, item);
+            rolled = true;
+        }
+    }
+    for (uint8 slot = 1; slot <= VaultSlots; ++slot)
+    {
+        uint16 const itemLevel = vault.raids.levels[slot - 1];
+        if (!itemLevel || HasOption(options, VaultRow::Raid, slot))
+            continue;
+        if (uint32 const item = RollRaidItem(player, LootAt(vault.raids, itemLevel)))
+        {
+            StoreOption(guid, week, VaultRow::Raid, slot, item);
             rolled = true;
         }
     }
@@ -178,11 +253,36 @@ std::vector<VaultOption> RollOptions(Player* player, uint32 week, DungeonWeek co
 }
 
 // `week`'s options while none is chosen; nothing is asked of the database for a week with no slot unlocked
-std::vector<VaultOption> OptionsFor(Player* player, uint32 week, DungeonWeek const& dungeons)
+std::vector<VaultOption> OptionsFor(Player* player, uint32 week, VaultWeek const& vault)
 {
-    if (!AnyUnlocked(dungeons) || Chosen(player, week))
+    if (!AnyUnlocked(vault) || Chosen(player, week))
         return {};
-    return RollOptions(player, week, dungeons);
+    return RollOptions(player, week, vault);
+}
+
+// Each Wrath raid boss counts once a week for everyone in the raid when it falls
+void RecordRaidBoss(Map* map, uint32 creditEntry)
+{
+    uint32 const week = CurrentWeek();
+    uint16 const mapId = uint16(map->GetId());
+    uint8 const difficulty = uint8(map->GetDifficulty());
+    map->DoForAllPlayers([&](Player* player)
+    {
+        if (player->IsGameMaster())
+            return;
+        // IGNORE: the same boss again this week, on another lockout, adds nothing
+        CharacterDatabase.Execute("INSERT IGNORE INTO mythic_plus_vault_activity (guid, week, `row`, map, difficulty, "
+                                  "ref) VALUES ({}, {}, {}, {}, {}, {})",
+                                  player->GetGUID().GetCounter(), week, uint32(VaultRow::Raid), mapId, difficulty,
+                                  creditEntry);
+    });
+}
+
+// Whether the credit is one of the map's encounters, not just any boss-flagged creature or credited spell
+bool IsEncounter(std::list<DungeonEncounter const*> const* encounters, EncounterCreditType type, uint32 creditEntry)
+{
+    return encounters && std::any_of(encounters->begin(), encounters->end(), [&](DungeonEncounter const* encounter)
+                                     { return encounter->creditType == type && encounter->creditEntry == creditEntry; });
 }
 }
 
@@ -191,7 +291,7 @@ std::vector<VaultOption> VaultOptions(Player* player, bool shown)
     uint32 const week = CurrentWeek();
     if (!week)
         return {};
-    std::vector<VaultOption> options = OptionsFor(player, week - 1, ReadDungeonWeek(player, week - 1));
+    std::vector<VaultOption> options = OptionsFor(player, week - 1, ReadWeek(player, week - 1));
     if (shown && !options.empty())
         DataOf(player)->shownWeek = week - 1;
     return options;
@@ -202,8 +302,8 @@ std::string ClaimOption(Player* player, VaultRow row, uint8 slot)
     if (!IsBot(player) && !player->FindNearestCreature(KeystoneMasterEntry, ForgeRange))
         return "Visit the Great Vault in Dalaran to choose your reward.";
     uint32 const week = CurrentWeek();
-    DungeonWeek const dungeons = week ? ReadDungeonWeek(player, week - 1) : DungeonWeek{};
-    if (!AnyUnlocked(dungeons))
+    VaultWeek const vault = week ? ReadWeek(player, week - 1) : VaultWeek{};
+    if (!AnyUnlocked(vault))
         return "The Great Vault holds nothing for you this week.";
     if (Chosen(player, week - 1))
         return "You have already chosen this week's reward.";
@@ -215,7 +315,7 @@ std::string ClaimOption(Player* player, VaultRow row, uint8 slot)
         SendVault(player);
         return "The Great Vault has changed. Choose again.";
     }
-    std::vector<VaultOption> const options = RollOptions(player, week - 1, dungeons);
+    std::vector<VaultOption> const options = RollOptions(player, week - 1, vault);
     auto const option = std::find_if(options.begin(), options.end(), [&](VaultOption const& candidate)
                                      { return candidate.row == row && candidate.slot == slot; });
     if (option == options.end())
@@ -236,27 +336,36 @@ void SendVault(Player* player)
     if (IsBot(player))
         return;
     uint32 const week = CurrentWeek();
-    DungeonWeek const last = week ? ReadDungeonWeek(player, week - 1) : DungeonWeek{};
+    VaultWeek const last = week ? ReadWeek(player, week - 1) : VaultWeek{};
     std::vector<VaultOption> const options = week ? OptionsFor(player, week - 1, last) : std::vector<VaultOption>{};
     if (!options.empty())
         DataOf(player)->shownWeek = week - 1;
     // While options wait the rows show the week they came from, as retail's; once one is chosen, this week's
-    // progress, from the runs kept in memory
-    DungeonWeek const dungeons = options.empty() ? ReadDungeonWeek(player, week) : last;
+    // progress, the runs from memory
+    VaultWeek const shown = options.empty() ? ReadWeek(player, week) : last;
     SendToClient(player, FormatVault(!options.empty()));
     for (VaultOption const& option : options)
         SendToClient(player, FormatVaultOption(option.row, option.slot, option.item));
     for (uint8 index = 1; index <= VaultRows; ++index)
     {
         VaultRow const row = VaultRow(index);
-        // Raids and World count nothing yet, so their slots stay locked
-        bool const counted = row == VaultRow::Dungeon;
         for (uint8 slot = 1; slot <= VaultSlots; ++slot)
         {
-            uint8 const level = counted ? uint8(dungeons.levels[slot - 1]) : 0;
-            uint32 const itemLevel = level ? uint32(ItemLevelForRank(VaultRankForKey(level))) : 0u;
-            SendToClient(player, FormatVaultSlot(row, slot, counted ? dungeons.runs : 0u, VaultThreshold(row, slot),
-                                                 itemLevel));
+            // World counts nothing yet, so its slots stay locked
+            uint32 progress = 0;
+            uint32 itemLevel = 0;
+            if (row == VaultRow::Dungeon)
+            {
+                uint8 const level = uint8(shown.dungeons.levels[slot - 1]);
+                progress = shown.dungeons.runs;
+                itemLevel = level ? uint32(ItemLevelForRank(VaultRankForKey(level))) : 0u;
+            }
+            else if (row == VaultRow::Raid)
+            {
+                progress = shown.raids.kills;
+                itemLevel = shown.raids.levels[slot - 1];
+            }
+            SendToClient(player, FormatVaultSlot(row, slot, progress, VaultThreshold(row, slot), itemLevel));
         }
     }
 }
@@ -277,7 +386,26 @@ public:
     }
 };
 
+// The Raids row's bosses: a kill credit in a Wrath raid (MythicVaultPolicy.h CountsForRaid)
+class MythicVaultGlobalScript : public GlobalScript
+{
+public:
+    MythicVaultGlobalScript() : GlobalScript("MythicVaultGlobalScript", {GLOBALHOOK_ON_AFTER_UPDATE_ENCOUNTER_STATE}) { }
+
+    void OnAfterUpdateEncounterState(Map* map, EncounterCreditType type, uint32 creditEntry, Unit* source,
+                                     Difficulty /*difficulty*/,
+                                     std::list<DungeonEncounter const*> const* encounters,
+                                     uint32 /*dungeonCompleted*/, bool /*updated*/) override
+    {
+        // The source is the boss, or the caster of a credited spell
+        if (CountsForRaid(uint16(map->GetId()), source ? source->GetLevel() : 0) &&
+            IsEncounter(encounters, type, creditEntry))
+            RecordRaidBoss(map, creditEntry);
+    }
+};
+
 void AddSC_mythic_vault()
 {
     new MythicVaultPlayerScript();
+    new MythicVaultGlobalScript();
 }

@@ -15,6 +15,8 @@
 #include <optional>
 #include <string>
 
+#include "MythicCrestPolicy.h"
+
 // Mythic+ item ranks (solo-wow). Every eligible dungeon item has 17 generated versions, Mythic 0 to Mythic 16, made
 // from the real item by one rule, so nothing is copied into SQL. The client caches stats by item id, so each rank
 // needs its own id: FirstRankId + index * RankCount + rank, where `index` is the item's fixed row in mythic_plus_item.
@@ -89,6 +91,53 @@ inline float RescaleDamage(float value, int fromLevel, int toLevel)
 inline std::string RankDescription(uint8_t rank)
 {
     return "Mythic " + std::to_string(rank);
+}
+
+// Raid item ranks: every raid item the Great Vault's Raids row gives has 5 generated versions, Raid 0 (the real item's
+// level) to Raid 4, each 2 item levels above the last, at FirstRaidRankId + index * RaidRankCount + rank, where `index`
+// is the item's fixed row in mythic_plus_raid_item. Every rank of one item is paid with one crest tier, set by the
+// real item's level.
+inline constexpr uint8_t MaxRaidRank = 4;
+inline constexpr uint8_t RaidRankCount = MaxRaidRank + 1;
+inline constexpr uint32_t FirstRaidRankId = 800000;
+// Up to the Mythic ranks
+inline constexpr uint32_t RaidRankIdEnd = 900000;
+inline constexpr uint32_t MaxRaidItemIndex = (RaidRankIdEnd - FirstRaidRankId) / RaidRankCount;
+
+constexpr uint32_t RaidRankId(uint32_t index, uint8_t rank)
+{
+    return FirstRaidRankId + index * RaidRankCount + rank;
+}
+
+constexpr std::optional<RankRef> DecodeRaidRankId(uint32_t itemId)
+{
+    if (itemId < FirstRaidRankId || itemId >= FirstRaidRankId + MaxRaidItemIndex * RaidRankCount)
+        return std::nullopt;
+    uint32_t const offset = itemId - FirstRaidRankId;
+    return RankRef{offset / RaidRankCount, uint8_t(offset % RaidRankCount)};
+}
+
+constexpr uint16_t RaidItemLevelForRank(uint16_t baseLevel, uint8_t rank)
+{
+    return uint16_t(baseLevel + ItemLevelPerRank * (rank > MaxRaidRank ? MaxRaidRank : rank));
+}
+
+// The tier a raid item's ranks cost, by the real item's level: below 226 Cobalt, below 245 Saronite, below 264
+// Titanium, then Titansteel
+constexpr Crest RaidCrestForItemLevel(uint16_t baseLevel)
+{
+    if (baseLevel < 226)
+        return Crest::Cobalt;
+    if (baseLevel < 245)
+        return Crest::Saronite;
+    if (baseLevel < 264)
+        return Crest::Titanium;
+    return Crest::Titansteel;
+}
+
+inline std::string RaidRankDescription(uint8_t rank)
+{
+    return "Raid " + std::to_string(rank);
 }
 }
 

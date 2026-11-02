@@ -20,7 +20,6 @@
 #include "InstanceSaveMgr.h"
 #include "Item.h"
 #include "MapMgr.h"
-#include "MythicItemPolicy.h"
 #include "MythicPlus.h"
 #include "ObjectAccessor.h"
 #include "ObjectMgr.h"
@@ -188,10 +187,10 @@ uint32 ForgeAction(uint8 bag, uint8 slot)
 
 void AddForgeItem(Player* player, Item* item, uint8 bag, uint8 slot, uint32& offered)
 {
-    if (!item || !IsMythicItem(item->GetEntry()))
+    std::string const rank = item ? RankName(item->GetEntry()) : std::string();
+    if (rank.empty())
         return;
-    std::optional<RankRef> const ref = DecodeRankId(item->GetEntry());
-    std::string const name = item->GetTemplate()->Name1 + " (Mythic " + std::to_string(ref->rank) + ")";
+    std::string const name = item->GetTemplate()->Name1 + " (" + rank + ")";
     if (std::string const cost = UpgradeCostText(item->GetEntry()); !cost.empty() && offered < MaxForgeOptions)
     {
         AddGossipItemFor(player, GOSSIP_ICON_INTERACT_1, name + " to " + cost, ForgeSender, ForgeAction(bag, slot),
@@ -229,10 +228,10 @@ void ShowVault(Player* player, Creature* master)
     for (VaultOption const& option : VaultOptions(player, true))
     {
         ItemTemplate const* item = sObjectMgr->GetItemTemplate(option.item);
-        std::optional<RankRef> const ref = DecodeRankId(option.item);
-        if (!item || !ref)
+        std::string const rank = RankName(option.item);
+        if (!item || rank.empty())
             continue;
-        std::string const name = item->Name1 + " (" + RankDescription(ref->rank) + ")";
+        std::string const name = item->Name1 + " (" + rank + ")";
         AddGossipItemFor(player, GOSSIP_ICON_MONEY_BAG, "Take " + name, VaultSender,
                          (uint32(option.row) << 8) | option.slot,
                          "Take " + name + "? The Great Vault gives one reward a week.", 0, false);

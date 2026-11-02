@@ -164,8 +164,8 @@ CrestWallet Crests(Player* player);
 CrestWallet EarnedThisWeek(Player* player);
 // Adds up to the weekly cap and returns what was added
 uint32 AwardCrests(Player* player, Crest crest, uint32 amount);
-// Pays for raising an item to `rank`; returns the tier paid with, or None
-Crest PayCrests(Player* player, uint8 rank);
+// Pays one rank's crests of `lowest` or a better tier; returns the tier paid with, or None
+Crest PayCrests(Player* player, Crest lowest);
 void RecordRun(Player* player, uint16 map, uint8 level, uint32 seconds, uint8 upgrade);
 uint32 Valorstones(Player* player);
 void AddValorstones(Player* player, uint32 amount);
@@ -183,13 +183,23 @@ bool IsMythicItem(uint32 itemId);
 uint32 RollItem(Player* player, uint16 map);
 // The same from any of `maps`' chests, at Mythic `rank`
 uint32 RollItemAtRank(Player* player, std::vector<uint16> const& maps, uint8 rank);
+// A raid and difficulty (0 10N, 1 25N, 2 10H, 3 25H) whose loot a Raids slot of the Great Vault gives
+struct RaidLoot
+{
+    uint16 map;
+    uint8 difficulty;
+};
+// A Raid 0 item from any of `raids`' loot (mythic_plus_raid_item) that `player` can use, or 0
+uint32 RollRaidItem(Player* player, std::vector<RaidLoot> const& raids);
+// "Mythic 5" or "Raid 2" for a ranked item; empty for any other
+std::string RankName(uint32 itemId);
 // Into the bags, or the mailbox when they're full
 void GiveItem(Player* player, uint32 itemId);
-// Raises the item at bag/slot one rank; returns why it didn't, or empty
+// Raises the Mythic+ or raid item at bag/slot one rank; returns why it didn't, or empty
 std::string UpgradeItem(Player* player, uint8 bag, uint8 slot);
 // The item's next rank cost, for the forge's text: empty when it can't go higher
 std::string UpgradeCostText(uint32 itemId);
-// What a bot does at the forge: raises its equipped Mythic+ items, lowest rank first, while its crests pay
+// What a bot does at the forge: raises its equipped Mythic+ and raid items, lowest rank first, while its crests pay
 void SpendCrestsOnGear(Player* player);
 // Adds one prismatic socket to the Mythic+ item at bag/slot for Valorstones; returns why it didn't, or empty
 std::string AddSocket(Player* player, uint8 bag, uint8 slot);

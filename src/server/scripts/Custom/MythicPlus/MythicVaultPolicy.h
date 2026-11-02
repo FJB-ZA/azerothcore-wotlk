@@ -65,6 +65,51 @@ constexpr bool VaultChoiceStale(uint32_t shownWeek, uint32_t optionsWeek)
     return shownWeek == VaultNotShown || shownWeek != optionsWeek;
 }
 
+// The Wrath raids whose bosses count for the Raids row, and the item level each difficulty gives (0 10-man normal,
+// 1 25-man normal, 2 10-man heroic, 3 25-man heroic; 0 where it doesn't exist). Vault of Archavon isn't one: its loot
+// is PvP gear and tier tokens.
+struct RaidInfo
+{
+    uint16_t map;
+    std::array<uint16_t, 4> itemLevel;
+};
+
+inline constexpr uint16_t OnyxiasLair = 249;
+// Onyxia counts at her Wrath level only, not as the classic raid
+inline constexpr uint8_t RaidMinCreatureLevel = 80;
+
+// solo-wow tools/mythic-plus/generate_items.py reads this table for the raids' loot (mythic_plus_raid_item)
+inline constexpr std::array<RaidInfo, 8> Raids = {{
+    {533, {200, 213, 0, 0}},     // Naxxramas
+    {615, {200, 213, 0, 0}},     // The Obsidian Sanctum
+    {616, {213, 226, 0, 0}},     // The Eye of Eternity
+    {603, {219, 226, 0, 0}},     // Ulduar
+    {249, {232, 245, 0, 0}},     // Onyxia's Lair
+    {649, {232, 245, 245, 258}}, // Trial of the Crusader
+    {631, {251, 264, 264, 277}}, // Icecrown Citadel
+    {724, {258, 271, 271, 284}}, // The Ruby Sanctum
+}};
+
+constexpr RaidInfo const* FindRaid(uint16_t map)
+{
+    for (RaidInfo const& raid : Raids)
+        if (raid.map == map)
+            return &raid;
+    return nullptr;
+}
+
+constexpr uint16_t RaidItemLevel(uint16_t map, uint8_t difficulty)
+{
+    RaidInfo const* raid = FindRaid(map);
+    return raid && difficulty < raid->itemLevel.size() ? raid->itemLevel[difficulty] : 0;
+}
+
+// Whether a boss of `creatureLevel` killed in `map` counts toward the Raids row
+constexpr bool CountsForRaid(uint16_t map, uint8_t creatureLevel)
+{
+    return FindRaid(map) && (map != OnyxiasLair || creatureLevel >= RaidMinCreatureLevel);
+}
+
 // Each slot's value from the week's key levels (or raid item levels), best first: slot n takes the value at its
 // threshold, or 0 when there were fewer
 inline std::array<uint16_t, VaultSlots> NthBest(std::vector<uint16_t> values, VaultRow row)

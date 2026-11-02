@@ -11,6 +11,7 @@
 #include <array>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "Chat.h"
@@ -29,7 +30,9 @@
 // Mythic+ items: every row of mythic_plus_item gets 17 generated templates, Mythic 0 to Mythic 16, built in memory
 // from the real item at start-up (MythicItemPolicy.h). The cache hands out Mythic 0 and the Great Vault the rank of
 // its slot (MythicVaultPolicy.h); crests raise the rank at the Keystone Master, keeping enchants, gems and binding.
-// A Blacksmith's Prismatic Socket Kit and Valorstones add prismatic sockets as a per-item enchant
+// Every row of mythic_plus_raid_item gets 5 the same way, Raid 0 to Raid 4, which the vault's Raids row gives at
+// Raid 0 and the same crests raise, all ranks of one item with the tier its real item's level sets.
+// A Blacksmith's Prismatic Socket Kit and Valorstones add prismatic sockets to Mythic+ items as a per-item enchant
 // (MythicValorPolicy.h), so no extra templates are needed.
 namespace MythicPlus
 {
@@ -41,21 +44,35 @@ struct RankedItem
     uint16 map;
 };
 
+struct RaidItem
+{
+    uint32 entry;
+    uint16 baseLevel;
+};
+
 // By rank-id index
 std::vector<RankedItem> rankedItems;
 std::unordered_map<uint16, std::vector<uint32>> indexesByMap;
+// By raid rank-id index, and the indexes of each raid and difficulty's loot (RaidKey)
+std::vector<RaidItem> raidItems;
+std::unordered_map<uint32, std::vector<uint32>> raidIndexesByLoot;
 
-ItemTemplate MakeRank(ItemTemplate const& base, uint32 itemId, uint8 rank)
+constexpr uint32 RaidKey(uint16 map, uint8 difficulty)
+{
+    return (uint32(map) << 8) | difficulty;
+}
+
+ItemTemplate MakeRank(ItemTemplate const& base, uint32 itemId, uint16 itemLevel, std::string description)
 {
     ItemTemplate item = base;
     int const from = int(base.ItemLevel);
-    int const to = int(ItemLevelForRank(rank));
+    int const to = int(itemLevel);
     item.ItemId = itemId;
     item.ItemLevel = uint32(to);
     item.Quality = ITEM_QUALITY_EPIC;
     item.Bonding = BIND_WHEN_PICKED_UP;
     item.Flags = ItemFlags(item.Flags & ~ITEM_FLAG_HEROIC_TOOLTIP);
-    item.Description = RankDescription(rank);
+    item.Description = std::move(description);
     for (uint32 i = 0; i < item.StatsCount && i < MAX_ITEM_PROTO_STATS; ++i)
         item.ItemStat[i].ItemStatValue = Rescale(base.ItemStat[i].ItemStatValue, StatGrowth, from, to);
     item.Armor = uint32(Rescale(int32(base.Armor), ArmorGrowth, from, to));
@@ -96,7 +113,8 @@ void BuildRankTemplates()
         indexesByMap[map].push_back(index);
         for (uint8 rank = 0; rank <= MaxRank; ++rank)
         {
-            if (!sObjectMgr->AddRuntimeItemTemplate(MakeRank(*base, RankId(index, rank), rank)))
+            if (!sObjectMgr->AddRuntimeItemTemplate(
+                    MakeRank(*base, RankId(index, rank), ItemLevelForRank(rank), RankDescription(rank))))
                 LOG_ERROR("sql.sql", "Mythic+: item {} already exists, so Mythic {} of item {} can't use it.",
                           RankId(index, rank), rank, entry);
             else
@@ -104,6 +122,80 @@ void BuildRankTemplates()
         }
     } while (result->NextRow());
     LOG_INFO("server.loading", ">> Mythic+: built {} item ranks for {} items.", built, rankedItems.size());
+}
+
+void BuildRaidRankTemplates()
+{
+    raidItems.clear();
+    raidIndexesByLoot.clear();
+    QueryResult result =
+        WorldDatabase.Query("SELECT idx, entry, map, difficulty FROM mythic_plus_raid_item ORDER BY idx");
+    if (!result)
+    {
+        LOG_WARN("server.loading", ">> Mythic+: mythic_plus_raid_item is empty, so the Great Vault's Raids row gives "
+                                   "nothing.");
+        return;
+    }
+    uint32 built = 0;
+    do
+    {
+        Field* fields = result->Fetch();
+        uint32 const index = fields[0].Get<uint32>();
+        uint32 const entry = fields[1].Get<uint32>();
+        uint16 const map = fields[2].Get<uint16>();
+        uint8 const difficulty = fields[3].Get<uint8>();
+        ItemTemplate const* base = sObjectMgr->GetItemTemplate(entry);
+        if (index >= MaxRaidItemIndex || index != raidItems.size() || !base)
+        {
+            LOG_ERROR("sql.sql", "Mythic+: mythic_plus_raid_item row {} (item {}) is out of order, past {} or not an "
+                                 "item; raid items stop there.", index, entry, MaxRaidItemIndex);
+            break;
+        }
+        uint16 const baseLevel = uint16(base->ItemLevel);
+        raidItems.push_back({entry, baseLevel});
+        raidIndexesByLoot[RaidKey(map, difficulty)].push_back(index);
+        for (uint8 rank = 0; rank <= MaxRaidRank; ++rank)
+        {
+            if (!sObjectMgr->AddRuntimeItemTemplate(MakeRank(*base, RaidRankId(index, rank),
+                                                             RaidItemLevelForRank(baseLevel, rank),
+                                                             RaidRankDescription(rank))))
+                LOG_ERROR("sql.sql", "Mythic+: item {} already exists, so Raid {} of item {} can't use it.",
+                          RaidRankId(index, rank), rank, entry);
+            else
+                ++built;
+        }
+    } while (result->NextRow());
+    LOG_INFO("server.loading", ">> Mythic+: built {} raid item ranks for {} items.", built, raidItems.size());
+}
+
+// Where a ranked item stands: on the Mythic track (0-16) or the Raid track (0-4), its row and its rank
+struct Place
+{
+    bool raid;
+    uint32 index;
+    uint8 rank;
+
+    [[nodiscard]] uint8 Top() const { return raid ? MaxRaidRank : MaxRank; }
+    [[nodiscard]] uint32 IdAt(uint8 at) const { return raid ? RaidRankId(index, at) : RankId(index, at); }
+    [[nodiscard]] uint16 LevelAt(uint8 at) const
+    {
+        return raid ? RaidItemLevelForRank(raidItems[index].baseLevel, at) : ItemLevelForRank(at);
+    }
+    // The lowest tier that pays for rank `at`
+    [[nodiscard]] Crest CrestAt(uint8 at) const
+    {
+        return raid ? RaidCrestForItemLevel(raidItems[index].baseLevel) : CrestForRank(at);
+    }
+    [[nodiscard]] std::string NameAt(uint8 at) const { return raid ? RaidRankDescription(at) : RankDescription(at); }
+};
+
+std::optional<Place> PlaceOf(uint32 itemId)
+{
+    if (std::optional<RankRef> const ref = DecodeRankId(itemId); ref && ref->index < rankedItems.size())
+        return Place{false, ref->index, ref->rank};
+    if (std::optional<RankRef> const ref = DecodeRaidRankId(itemId); ref && ref->index < raidItems.size())
+        return Place{true, ref->index, ref->rank};
+    return std::nullopt;
 }
 
 // The armor type a class collects, like Legion's loot
@@ -223,6 +315,27 @@ uint32 RollItemAtRank(Player* player, std::vector<uint16> const& maps, uint8 ran
     return suitable.empty() ? 0 : Acore::Containers::SelectRandomContainerElement(suitable);
 }
 
+uint32 RollRaidItem(Player* player, std::vector<RaidLoot> const& raids)
+{
+    std::vector<uint32> suitable;
+    for (RaidLoot const& raid : raids)
+    {
+        auto const itr = raidIndexesByLoot.find(RaidKey(raid.map, raid.difficulty));
+        if (itr == raidIndexesByLoot.end())
+            continue;
+        for (uint32 index : itr->second)
+            if (Suits(player, sObjectMgr->GetItemTemplate(RaidRankId(index, 0))))
+                suitable.push_back(RaidRankId(index, 0));
+    }
+    return suitable.empty() ? 0 : Acore::Containers::SelectRandomContainerElement(suitable);
+}
+
+std::string RankName(uint32 itemId)
+{
+    std::optional<Place> const place = PlaceOf(itemId);
+    return place ? place->NameAt(place->rank) : std::string();
+}
+
 void GiveItem(Player* player, uint32 itemId)
 {
     ItemPosCountVec dest;
@@ -239,23 +352,23 @@ void GiveItem(Player* player, uint32 itemId)
 std::string UpgradeItem(Player* player, uint8 bag, uint8 slot)
 {
     Item* item = player->GetItemByPos(bag, slot);
-    std::optional<RankRef> const ref = item ? DecodeRankId(item->GetEntry()) : std::nullopt;
-    if (!ref || ref->index >= rankedItems.size())
-        return "Only Mythic+ items can be upgraded.";
-    if (ref->rank >= MaxRank)
+    std::optional<Place> const place = item ? PlaceOf(item->GetEntry()) : std::nullopt;
+    if (!place)
+        return "Only Mythic+ items and the Great Vault's raid items can be upgraded.";
+    if (place->rank >= place->Top())
         return "This item is fully upgraded.";
     if (player->IsInCombat())
         return "You can't upgrade items in combat.";
     if (item->IsInTrade() || item->IsNotEmptyBag())
         return "That item can't be upgraded right now.";
-    uint8 const rank = uint8(ref->rank + 1);
-    uint32 const nextId = RankId(ref->index, rank);
+    uint8 const rank = uint8(place->rank + 1);
+    uint32 const nextId = place->IdAt(rank);
     if (!sObjectMgr->GetItemTemplate(nextId))
         return "That item has no higher rank on this server.";
-    CrestWallet wallet = Crests(player);
-    if (PayForRank(wallet, rank) == Crest::None)
-        return "Mythic " + std::to_string(rank) + " costs " + std::to_string(CrestsPerRank) + " " +
-               CrestName(CrestForRank(rank)) + " Crests, or better crests.";
+    Crest const crest = place->CrestAt(rank);
+    if (!CanAffordCrest(Crests(player), crest))
+        return place->NameAt(rank) + " costs " + std::to_string(CrestsPerRank) + " " + CrestName(crest) +
+               " Crests, or better crests.";
 
     bool const equipped = Player::IsEquipmentPos(bag, slot);
     ItemState const state = SaveState(item);
@@ -264,7 +377,7 @@ std::string UpgradeItem(Player* player, uint8 bag, uint8 slot)
         return "That item can't be upgraded right now.";
     player->DestroyItem(bag, slot, true);
     RestoreState(upgraded, state);
-    PayCrests(player, rank);
+    PayCrests(player, crest);
 
     if (equipped)
     {
@@ -294,12 +407,12 @@ std::string UpgradeItem(Player* player, uint8 bag, uint8 slot)
 
 std::string UpgradeCostText(uint32 itemId)
 {
-    std::optional<RankRef> const ref = DecodeRankId(itemId);
-    if (!ref || ref->rank >= MaxRank)
+    std::optional<Place> const place = PlaceOf(itemId);
+    if (!place || place->rank >= place->Top())
         return {};
-    uint8 const rank = uint8(ref->rank + 1);
-    return "Mythic " + std::to_string(rank) + " (item level " + std::to_string(ItemLevelForRank(rank)) + "): " +
-           std::to_string(CrestsPerRank) + " " + CrestName(CrestForRank(rank)) + " Crests";
+    uint8 const rank = uint8(place->rank + 1);
+    return place->NameAt(rank) + " (item level " + std::to_string(place->LevelAt(rank)) + "): " +
+           std::to_string(CrestsPerRank) + " " + CrestName(place->CrestAt(rank)) + " Crests";
 }
 
 std::string AddSocket(Player* player, uint8 bag, uint8 slot)
@@ -364,12 +477,12 @@ void SpendCrestsOnGear(Player* player)
         for (uint8 slot = EQUIPMENT_SLOT_START; slot < EQUIPMENT_SLOT_END; ++slot)
         {
             Item* item = player->GetItemByPos(INVENTORY_SLOT_BAG_0, slot);
-            std::optional<RankRef> const ref = item ? DecodeRankId(item->GetEntry()) : std::nullopt;
-            if (ref && ref->index < rankedItems.size() && ref->rank < pickRank &&
-                CanAfford(wallet, uint8(ref->rank + 1)))
+            std::optional<Place> const place = item ? PlaceOf(item->GetEntry()) : std::nullopt;
+            if (place && place->rank < place->Top() && place->rank < pickRank &&
+                CanAffordCrest(wallet, place->CrestAt(uint8(place->rank + 1))))
             {
                 pick = slot;
-                pickRank = ref->rank;
+                pickRank = place->rank;
             }
         }
         if (pick == EQUIPMENT_SLOT_END || !UpgradeItem(player, INVENTORY_SLOT_BAG_0, pick).empty())
@@ -386,7 +499,11 @@ public:
     MythicItemsWorldScript() : WorldScript("MythicItemsWorldScript", {WORLDHOOK_ON_BEFORE_WORLD_INITIALIZED}) { }
 
     // After the item templates load and before anyone logs in with a Mythic+ item
-    void OnBeforeWorldInitialized() override { BuildRankTemplates(); }
+    void OnBeforeWorldInitialized() override
+    {
+        BuildRankTemplates();
+        BuildRaidRankTemplates();
+    }
 };
 
 void AddSC_mythic_items()
