@@ -22,23 +22,12 @@
 
 // Mythic+ addon messages (MythicProtocolPolicy.h): the keystone, crests, Valorstones, week, run history and vault at
 // login and on request, the run every second inside a run, and the result at the end. The addon's Crest Forge asks
-// for upgrades, sockets and crests the same way.
+// for upgrades, sockets and crests the same way, and its Great Vault for the reward chosen.
 namespace MythicPlus
 {
 namespace
 {
-constexpr float ForgeRange = 10.0f;
 constexpr float FontRange = 10.0f;
-
-void SendToClient(Player* player, std::string const& body)
-{
-    if (IsBot(player))
-        return;
-    WorldPacket data;
-    ChatHandler::BuildChatPacket(data, CHAT_MSG_WHISPER, LANG_ADDON, player, player,
-                                 std::string(AddonPrefix) + '\t' + body);
-    player->SendDirectMessage(&data);
-}
 
 GameObject* FindNearestFont(Player* player)
 {
@@ -56,6 +45,16 @@ void SendAll(Player* player)
     if (MythicRun* run = FindRun(player->GetMap()))
         SendRun(player, *run);
 }
+}
+
+void SendToClient(Player* player, std::string const& body)
+{
+    if (IsBot(player))
+        return;
+    WorldPacket data;
+    ChatHandler::BuildChatPacket(data, CHAT_MSG_WHISPER, LANG_ADDON, player, player,
+                                 std::string(AddonPrefix) + '\t' + body);
+    player->SendDirectMessage(&data);
 }
 
 void SendKeystone(Player* player)
@@ -123,12 +122,6 @@ void SendFontKeys(Player* player, std::vector<Player*> const& holders)
         SendToClient(player, FormatFontKey(uint32(holder->GetGUID().GetCounter()), key.map, key.level));
     }
 }
-
-void SendVault(Player* player)
-{
-    if (!IsBot(player))
-        SendToClient(player, FormatVault(PendingVault(player).has_value()));
-}
 }
 
 using namespace MythicPlus;
@@ -147,8 +140,8 @@ public:
             SendAll(player);
     }
 
-    // "SoloWowMythic\tQ" asks for everything; A puts a key in the Font of Power; U upgrades an item, S sockets it and
-    // P buys crests, at the Keystone Master
+    // "SoloWowMythic\tQ" asks for everything; A puts a key in the Font of Power; U upgrades an item, S sockets it,
+    // P buys crests and V takes the Great Vault's reward, at the Keystone Master
     bool OnPlayerCanUseChat(Player* player, uint32 type, uint32 language, std::string& msg, Player* receiver) override
     {
         std::string const prefix = std::string(AddonPrefix) + '\t';
@@ -167,6 +160,13 @@ public:
             std::string const reason =
                 font ? ActivateKey(player, font, *holder) : "Stand at the Font of Power to start a keystone.";
             if (!reason.empty())
+                ChatHandler(player->GetSession()).SendNotification(reason);
+            return false;
+        }
+        // ClaimOption checks the Keystone Master is near
+        if (std::optional<VaultChoice> const choice = ParseVaultChoice(body))
+        {
+            if (std::string const reason = ClaimOption(player, choice->row, choice->slot); !reason.empty())
                 ChatHandler(player->GetSession()).SendNotification(reason);
             return false;
         }

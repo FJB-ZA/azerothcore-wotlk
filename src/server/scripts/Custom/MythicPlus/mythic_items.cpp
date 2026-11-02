@@ -27,8 +27,8 @@
 #include "ScriptMgr.h"
 
 // Mythic+ items: every row of mythic_plus_item gets 17 generated templates, Mythic 0 to Mythic 16, built in memory
-// from the real item at start-up (MythicItemPolicy.h). The cache and the vault hand out Mythic 0; crests raise the
-// rank at the Keystone Master, keeping enchants, gems and binding. A Blacksmith's Prismatic Socket Kit and
+// from the real item at start-up (MythicItemPolicy.h). The cache hands out Mythic 0 and the Great Vault the rank of
+// its slot (MythicVaultPolicy.h); crests raise the rank at the Keystone Master, keeping enchants, gems and binding. A Blacksmith's Prismatic Socket Kit and
 // Valorstones add prismatic sockets as a per-item enchant (MythicValorPolicy.h), so no extra templates are needed.
 namespace MythicPlus
 {
@@ -203,11 +203,12 @@ bool IsMythicItem(uint32 itemId)
 
 uint32 RollItem(Player* player, uint16 map)
 {
-    return RollItem(player, std::vector<uint16>{map});
+    return RollItemAtRank(player, std::vector<uint16>{map}, 0);
 }
 
-uint32 RollItem(Player* player, std::vector<uint16> const& maps)
+uint32 RollItemAtRank(Player* player, std::vector<uint16> const& maps, uint8 rank)
 {
+    rank = std::min(rank, MaxRank);
     std::vector<uint32> suitable;
     for (uint16 map : maps)
     {
@@ -215,8 +216,8 @@ uint32 RollItem(Player* player, std::vector<uint16> const& maps)
         if (itr == indexesByMap.end())
             continue;
         for (uint32 index : itr->second)
-            if (Suits(player, sObjectMgr->GetItemTemplate(RankId(index, 0))))
-                suitable.push_back(RankId(index, 0));
+            if (Suits(player, sObjectMgr->GetItemTemplate(RankId(index, rank))))
+                suitable.push_back(RankId(index, rank));
     }
     return suitable.empty() ? 0 : Acore::Containers::SelectRandomContainerElement(suitable);
 }
@@ -348,19 +349,6 @@ std::string BuyCrests(Player* player, Crest crest)
     if (!SpendValorstones(player, price))
         return std::to_string(CrestBundle) + " " + name + " cost " + std::to_string(price) + " Valorstones.";
     AwardCrests(player, crest, CrestBundle);
-    return {};
-}
-
-std::string OpenVault(Player* player)
-{
-    std::optional<VaultReward> const reward = PendingVault(player);
-    if (!reward)
-        return "The vault is empty. Finish a keystone this week to fill next week's.";
-    uint32 const item = RollItem(player, reward->maps);
-    if (!item)
-        return "The vault holds nothing for your class from last week's dungeons.";
-    ClaimVault(player, reward->week);
-    GiveItem(player, item);
     return {};
 }
 

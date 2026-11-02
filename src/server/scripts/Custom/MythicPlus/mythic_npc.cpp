@@ -23,14 +23,16 @@
 #include "MythicItemPolicy.h"
 #include "MythicPlus.h"
 #include "ObjectAccessor.h"
+#include "ObjectMgr.h"
 #include "Player.h"
 #include "ScriptMgr.h"
 #include "ScriptedGossip.h"
 #include "WorldSession.h"
 
 // npc_mythic_plus, the Keystone Master in the Dalaran emblem rooms: teleports the group to a dungeon one of them,
-// bots included, holds a key for, hands out a first key, opens last week's vault, runs the Crest Forge (ranks and
-// sockets) and trades Valorstones for crests.
+// bots included, holds a key for, hands out a first key, is the Great Vault where last week's reward is chosen (the
+// addon's window, or these gossip options without it), runs the Crest Forge (ranks and sockets) and trades
+// Valorstones for crests.
 namespace
 {
 using namespace MythicPlus;
@@ -39,6 +41,7 @@ constexpr uint32 MainSender = GOSSIP_SENDER_MAIN + 43;
 constexpr uint32 ForgeSender = GOSSIP_SENDER_MAIN + 44;
 constexpr uint32 SocketSender = GOSSIP_SENDER_MAIN + 45;
 constexpr uint32 ShopSender = GOSSIP_SENDER_MAIN + 46;
+constexpr uint32 VaultSender = GOSSIP_SENDER_MAIN + 47;
 enum MainAction : uint32
 {
     ActionStarterKey = 1,
@@ -219,6 +222,24 @@ void ShowShop(Player* player, Creature* master)
     SendGossipMenuFor(player, DEFAULT_GOSSIP_MESSAGE, master->GetGUID());
 }
 
+// The Great Vault's options as gossip, for a player without the addon's window: one item to take
+void ShowVault(Player* player, Creature* master)
+{
+    ClearGossipMenuFor(player);
+    for (VaultOption const& option : VaultOptions(player))
+    {
+        ItemTemplate const* item = sObjectMgr->GetItemTemplate(option.item);
+        std::optional<RankRef> const ref = DecodeRankId(option.item);
+        if (!item || !ref)
+            continue;
+        std::string const name = item->Name1 + " (" + RankDescription(ref->rank) + ")";
+        AddGossipItemFor(player, GOSSIP_ICON_MONEY_BAG, "Take " + name, VaultSender,
+                         (uint32(option.row) << 8) | option.slot,
+                         "Take " + name + "? The Great Vault gives one reward a week.", 0, false);
+    }
+    SendGossipMenuFor(player, DEFAULT_GOSSIP_MESSAGE, master->GetGUID());
+}
+
 void ShowForge(Player* player, Creature* master)
 {
     ClearGossipMenuFor(player);
@@ -248,10 +269,8 @@ public:
         AddTeleports(player, creature);
         if (!GetKeystone(player).map)
             AddGossipItemFor(player, GOSSIP_ICON_CHAT, "I need a keystone.", MainSender, ActionStarterKey);
-        if (std::optional<VaultReward> const reward = PendingVault(player))
-            AddGossipItemFor(player, GOSSIP_ICON_MONEY_BAG, "Open the Great Vault (last week's best: +" +
-                                                                std::to_string(reward->bestLevel) + ").",
-                             MainSender, ActionVault);
+        if (!VaultOptions(player).empty())
+            AddGossipItemFor(player, GOSSIP_ICON_MONEY_BAG, "Open the Great Vault", MainSender, ActionVault);
         AddGossipItemFor(player, GOSSIP_ICON_INTERACT_1, "Upgrade or socket my Mythic+ gear.", MainSender,
                          ActionForge);
         AddGossipItemFor(player, GOSSIP_ICON_VENDOR, "Trade Valorstones for crests.", MainSender, ActionShop);
@@ -274,6 +293,14 @@ public:
             ShowForge(player, creature);
             return true;
         }
+        if (sender == VaultSender)
+        {
+            std::string const reason = ClaimOption(player, VaultRow(action >> 8), uint8(action & 0xFF));
+            if (!reason.empty())
+                ChatHandler(player->GetSession()).SendNotification(reason);
+            OnGossipHello(player, creature);
+            return true;
+        }
         if (sender == ShopSender)
         {
             if (std::string const reason = BuyCrests(player, Crest(action)); !reason.empty())
@@ -294,12 +321,11 @@ public:
             case ActionShop:
                 ShowShop(player, creature);
                 return true;
+            case ActionVault:
+                ShowVault(player, creature);
+                return true;
             case ActionStarterKey:
                 GiveStarterKey(player);
-                break;
-            case ActionVault:
-                if (std::string const reason = OpenVault(player); !reason.empty())
-                    ChatHandler(player->GetSession()).SendNotification(reason);
                 break;
             case ActionAffixes:
                 ShowAffixes(player);
