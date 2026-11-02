@@ -32,11 +32,13 @@ namespace
 {
 constexpr char const* DataKey = "MythicPlusVault";
 
-// The week the player is known to have chosen in, so a second choice is refused without asking the database
+// The week the player is known to have chosen in, so a second choice is refused without asking the database, and the
+// week whose options the player was last shown, so a choice from before the reset is refused
 struct VaultData : public DataMap::Base
 {
     bool chosen = false;
     uint32 chosenWeek = 0;
+    uint32 shownWeek = VaultNotShown;
 };
 
 VaultData* DataOf(Player* player)
@@ -138,11 +140,16 @@ uint32 ItemLevelOf(uint32 itemId)
     return item ? item->ItemLevel : 0;
 }
 
-// `week`'s options: each unlocked slot without one yet rolls it, from the week's dungeons at its key's rank
-std::vector<VaultOption> OptionsFor(Player* player, uint32 week, DungeonWeek const& dungeons)
+// Raids and World count nothing yet, so only a keystone unlocks a slot; the best key fills slot 1 first
+bool AnyUnlocked(DungeonWeek const& dungeons)
 {
-    if (Chosen(player, week))
-        return {};
+    return dungeons.levels[0] != 0;
+}
+
+// `week`'s options, whether or not one was chosen: each unlocked slot without one yet rolls it, from the week's
+// dungeons at its key's rank
+std::vector<VaultOption> RollOptions(Player* player, uint32 week, DungeonWeek const& dungeons)
+{
     uint32 const guid = player->GetGUID().GetCounter();
     std::vector<VaultOption> options = StoredOptions(guid, week);
     std::vector<uint16> maps;
@@ -169,14 +176,25 @@ std::vector<VaultOption> OptionsFor(Player* player, uint32 week, DungeonWeek con
                      { return ItemLevelOf(a.item) > ItemLevelOf(b.item); });
     return options;
 }
+
+// `week`'s options while none is chosen; nothing is asked of the database for a week with no slot unlocked
+std::vector<VaultOption> OptionsFor(Player* player, uint32 week, DungeonWeek const& dungeons)
+{
+    if (!AnyUnlocked(dungeons) || Chosen(player, week))
+        return {};
+    return RollOptions(player, week, dungeons);
+}
 }
 
-std::vector<VaultOption> VaultOptions(Player* player)
+std::vector<VaultOption> VaultOptions(Player* player, bool shown)
 {
     uint32 const week = CurrentWeek();
     if (!week)
         return {};
-    return OptionsFor(player, week - 1, ReadDungeonWeek(player, week - 1));
+    std::vector<VaultOption> options = OptionsFor(player, week - 1, ReadDungeonWeek(player, week - 1));
+    if (shown && !options.empty())
+        DataOf(player)->shownWeek = week - 1;
+    return options;
 }
 
 std::string ClaimOption(Player* player, VaultRow row, uint8 slot)
@@ -184,16 +202,25 @@ std::string ClaimOption(Player* player, VaultRow row, uint8 slot)
     if (!IsBot(player) && !player->FindNearestCreature(KeystoneMasterEntry, ForgeRange))
         return "Visit the Great Vault in Dalaran to choose your reward.";
     uint32 const week = CurrentWeek();
-    if (week && Chosen(player, week - 1))
+    DungeonWeek const dungeons = week ? ReadDungeonWeek(player, week - 1) : DungeonWeek{};
+    if (!AnyUnlocked(dungeons))
+        return "The Great Vault holds nothing for you this week.";
+    if (Chosen(player, week - 1))
         return "You have already chosen this week's reward.";
-    std::vector<VaultOption> const options = VaultOptions(player);
+    VaultData* data = DataOf(player);
+    // Chosen from a window or gossip list of before the reset: this week's options are shown instead. Bots choose
+    // without being shown.
+    if (!IsBot(player) && VaultChoiceStale(data->shownWeek, week - 1))
+    {
+        SendVault(player);
+        return "The Great Vault has changed. Choose again.";
+    }
+    std::vector<VaultOption> const options = RollOptions(player, week - 1, dungeons);
     auto const option = std::find_if(options.begin(), options.end(), [&](VaultOption const& candidate)
                                      { return candidate.row == row && candidate.slot == slot; });
     if (option == options.end())
-        return options.empty() ? "The Great Vault holds nothing for you this week."
-                               : "That slot of the Great Vault holds no reward this week.";
+        return "That slot of the Great Vault holds no reward this week.";
     // Closed in memory and at once in the database before the item is given, so a second choice gets nothing
-    VaultData* data = DataOf(player);
     data->chosen = true;
     data->chosenWeek = week - 1;
     CharacterDatabase.DirectExecute("UPDATE mythic_plus_vault_option SET chosen = 1 WHERE guid = {} AND week = {} AND "
@@ -209,16 +236,13 @@ void SendVault(Player* player)
     if (IsBot(player))
         return;
     uint32 const week = CurrentWeek();
-    DungeonWeek dungeons;
-    std::vector<VaultOption> options;
-    if (week)
-    {
-        dungeons = ReadDungeonWeek(player, week - 1);
-        options = OptionsFor(player, week - 1, dungeons);
-    }
-    // While options wait the rows show the week they came from, as retail's; once one is chosen, this week's progress
-    if (options.empty())
-        dungeons = ReadDungeonWeek(player, week);
+    DungeonWeek const last = week ? ReadDungeonWeek(player, week - 1) : DungeonWeek{};
+    std::vector<VaultOption> const options = week ? OptionsFor(player, week - 1, last) : std::vector<VaultOption>{};
+    if (!options.empty())
+        DataOf(player)->shownWeek = week - 1;
+    // While options wait the rows show the week they came from, as retail's; once one is chosen, this week's
+    // progress, from the runs kept in memory
+    DungeonWeek const dungeons = options.empty() ? ReadDungeonWeek(player, week) : last;
     SendToClient(player, FormatVault(!options.empty()));
     for (VaultOption const& option : options)
         SendToClient(player, FormatVaultOption(option.row, option.slot, option.item));

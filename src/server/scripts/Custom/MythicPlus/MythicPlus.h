@@ -220,8 +220,9 @@ struct VaultOption
     uint32 item;
 };
 // Last week's options, best item level first: rolled once, the first time they're asked for after the reset, and
-// kept; none once one is chosen
-std::vector<VaultOption> VaultOptions(Player* player);
+// kept; none once one is chosen. `shown` when they are listed for the player to choose from, which ClaimOption
+// checks so a choice from before the reset is refused.
+std::vector<VaultOption> VaultOptions(Player* player, bool shown = false);
 // Gives the option in `row`'s `slot` and closes the week's vault; returns why not, or empty. Bots choose anywhere.
 std::string ClaimOption(Player* player, VaultRow row, uint8 slot);
 // The vault's options and rows for the addon's Great Vault window

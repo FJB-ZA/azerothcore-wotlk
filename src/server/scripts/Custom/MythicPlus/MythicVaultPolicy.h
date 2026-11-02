@@ -56,6 +56,15 @@ constexpr uint8_t VaultRankForKey(uint8_t level)
     return crest == Crest::None ? 0 : uint8_t((uint8_t(crest) - 1) * RanksPerTier + 2);
 }
 
+// A choice is made from the options last shown (the addon's window or the gossip list); after the reset they are
+// another week's, and the choice is refused until the new ones are shown. No week shown yet is never current.
+inline constexpr uint32_t VaultNotShown = UINT32_MAX;
+
+constexpr bool VaultChoiceStale(uint32_t shownWeek, uint32_t optionsWeek)
+{
+    return shownWeek == VaultNotShown || shownWeek != optionsWeek;
+}
+
 // Each slot's value from the week's key levels (or raid item levels), best first: slot n takes the value at its
 // threshold, or 0 when there were fewer
 inline std::array<uint16_t, VaultSlots> NthBest(std::vector<uint16_t> values, VaultRow row)

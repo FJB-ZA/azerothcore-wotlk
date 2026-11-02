@@ -226,7 +226,7 @@ void ShowShop(Player* player, Creature* master)
 void ShowVault(Player* player, Creature* master)
 {
     ClearGossipMenuFor(player);
-    for (VaultOption const& option : VaultOptions(player))
+    for (VaultOption const& option : VaultOptions(player, true))
     {
         ItemTemplate const* item = sObjectMgr->GetItemTemplate(option.item);
         std::optional<RankRef> const ref = DecodeRankId(option.item);

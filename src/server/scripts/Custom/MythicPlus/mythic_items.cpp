@@ -28,8 +28,9 @@
 
 // Mythic+ items: every row of mythic_plus_item gets 17 generated templates, Mythic 0 to Mythic 16, built in memory
 // from the real item at start-up (MythicItemPolicy.h). The cache hands out Mythic 0 and the Great Vault the rank of
-// its slot (MythicVaultPolicy.h); crests raise the rank at the Keystone Master, keeping enchants, gems and binding. A Blacksmith's Prismatic Socket Kit and
-// Valorstones add prismatic sockets as a per-item enchant (MythicValorPolicy.h), so no extra templates are needed.
+// its slot (MythicVaultPolicy.h); crests raise the rank at the Keystone Master, keeping enchants, gems and binding.
+// A Blacksmith's Prismatic Socket Kit and Valorstones add prismatic sockets as a per-item enchant
+// (MythicValorPolicy.h), so no extra templates are needed.
 namespace MythicPlus
 {
 namespace
