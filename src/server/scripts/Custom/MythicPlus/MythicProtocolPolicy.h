@@ -128,6 +128,17 @@ inline std::string FormatVault(bool ready)
     return ready ? "G1 1" : "G1 0";
 }
 
+// "F1 <count>" starts the Font of Power's key list, then one "F2 <holder guid low> <map> <level>" per key holder
+inline std::string FormatFontKeys(std::size_t count)
+{
+    return "F1 " + std::to_string(count);
+}
+
+inline std::string FormatFontKey(uint32_t holderLow, uint32_t map, uint8_t level)
+{
+    return "F2 " + std::to_string(holderLow) + ' ' + std::to_string(map) + ' ' + std::to_string(level);
+}
+
 // Client to server: "Q" asks for everything again
 constexpr bool IsQuery(std::string_view body)
 {
@@ -174,6 +185,14 @@ inline std::optional<UpgradeRequest> ParseItemRequest(std::string_view body, cha
     if (!bag || !slot || *bag > 255 || *slot > 255)
         return std::nullopt;
     return UpgradeRequest{uint8_t(*bag), uint8_t(*slot)};
+}
+
+// "A <holder guid low>" puts that holder's keystone in the Font of Power
+inline std::optional<uint32_t> ParseActivate(std::string_view body)
+{
+    if (body.size() < 3 || body.substr(0, 2) != "A ")
+        return std::nullopt;
+    return ParseNumber(body.substr(2));
 }
 
 // "U <bag> <slot>" raises the item one rank

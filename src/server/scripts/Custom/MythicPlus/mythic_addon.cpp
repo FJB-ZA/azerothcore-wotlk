@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "Chat.h"
+#include "GameObject.h"
 #include "GameTime.h"
 #include "MythicPlus.h"
 #include "MythicProtocolPolicy.h"
@@ -27,6 +28,7 @@ namespace MythicPlus
 namespace
 {
 constexpr float ForgeRange = 10.0f;
+constexpr float FontRange = 10.0f;
 
 void SendToClient(Player* player, std::string const& body)
 {
@@ -36,6 +38,11 @@ void SendToClient(Player* player, std::string const& body)
     ChatHandler::BuildChatPacket(data, CHAT_MSG_WHISPER, LANG_ADDON, player, player,
                                  std::string(AddonPrefix) + '\t' + body);
     player->SendDirectMessage(&data);
+}
+
+GameObject* FindNearestFont(Player* player)
+{
+    return player->FindNearestGameObject(FontOfPowerEntry, FontRange);
 }
 
 void SendAll(Player* player)
@@ -107,6 +114,16 @@ void SendHistory(Player* player)
         SendToClient(player, FormatBestRun(run));
 }
 
+void SendFontKeys(Player* player, std::vector<Player*> const& holders)
+{
+    SendToClient(player, FormatFontKeys(holders.size()));
+    for (Player* holder : holders)
+    {
+        Keystone const key = GetKeystone(holder);
+        SendToClient(player, FormatFontKey(uint32(holder->GetGUID().GetCounter()), key.map, key.level));
+    }
+}
+
 void SendVault(Player* player)
 {
     if (!IsBot(player))
@@ -130,7 +147,8 @@ public:
             SendAll(player);
     }
 
-    // "SoloWowMythic\tQ" asks for everything; U upgrades an item, S sockets it and P buys crests, at the Keystone Master
+    // "SoloWowMythic\tQ" asks for everything; A puts a key in the Font of Power; U upgrades an item, S sockets it and
+    // P buys crests, at the Keystone Master
     bool OnPlayerCanUseChat(Player* player, uint32 type, uint32 language, std::string& msg, Player* receiver) override
     {
         std::string const prefix = std::string(AddonPrefix) + '\t';
@@ -141,6 +159,15 @@ public:
         if (IsQuery(body))
         {
             SendAll(player);
+            return false;
+        }
+        if (std::optional<uint32> const holder = ParseActivate(body))
+        {
+            GameObject* font = FindNearestFont(player);
+            std::string const reason =
+                font ? ActivateKey(player, font, *holder) : "Stand at the Font of Power to start a keystone.";
+            if (!reason.empty())
+                ChatHandler(player->GetSession()).SendNotification(reason);
             return false;
         }
         std::optional<UpgradeRequest> const upgrade = ParseUpgrade(body);

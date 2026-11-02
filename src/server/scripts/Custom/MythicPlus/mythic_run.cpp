@@ -153,7 +153,8 @@ bool HoldsKeyFor(Player* holder, Map* map)
     return GetKeystone(holder).map == map->GetId();
 }
 
-// Whose keys `player` may put in: their own, and those of their group's bots in the dungeon, who can't use the Font
+// Whose keys `player` may put in: their own, and those of their group in the dungeon, bots (who can't use the Font)
+// and the other players alike
 std::vector<Player*> KeyHolders(Player* player, Map* map)
 {
     std::vector<Player*> holders;
@@ -165,7 +166,7 @@ std::vector<Player*> KeyHolders(Player* player, Map* map)
     for (GroupReference* itr = group->GetFirstMember(); itr; itr = itr->next())
     {
         Player* member = itr->GetSource();
-        if (member && member->GetMap() == map && IsBot(member) && HoldsKeyFor(member, map))
+        if (member && member->GetMap() == map && member != player && HoldsKeyFor(member, map))
             holders.push_back(member);
     }
     return holders;
@@ -371,6 +372,23 @@ bool IsBot(Player* player)
     return player->GetSession()->GetRemoteAddress() == "headless";
 }
 
+std::string ActivateKey(Player* player, GameObject* font, uint32 holderLow)
+{
+    Map* map = font->GetMap();
+    if (std::string const reason = FontRefusal(map); !reason.empty())
+        return reason;
+    // The holder may have left or lost the key since the list was shown, so check again
+    for (Player* holder : KeyHolders(player, map))
+    {
+        if (holder->GetGUID().GetCounter() == holderLow)
+        {
+            Start(holder, map, GetKeystone(holder));
+            return {};
+        }
+    }
+    return NoKeyReason(player);
+}
+
 bool IsBoss(Creature* creature)
 {
     return creature->IsDungeonBoss() || creature->isWorldBoss() || FindBossMechanic(creature->GetEntry());
@@ -432,6 +450,8 @@ public:
             handler.SendNotification(NoKeyReason(player));
             return true;
         }
+        // The addon turns this into its keystone window; without it the menu below is the fallback
+        SendFontKeys(player, holders);
         MythicRun preview;
         preview.affixes = AffixesForWeek(WeekIndex(uint64(GameTime::GetGameTime().count())));
         for (Player* holder : holders)
@@ -454,21 +474,8 @@ public:
         CloseGossipMenuFor(player);
         if (sender != FontSender)
             return true;
-        Map* map = go->GetMap();
-        if (std::string const reason = FontRefusal(map); !reason.empty())
-        {
+        if (std::string const reason = ActivateKey(player, go, action); !reason.empty())
             ChatHandler(player->GetSession()).SendNotification(reason);
-            return true;
-        }
-        for (Player* holder : KeyHolders(player, map))
-        {
-            if (holder->GetGUID().GetCounter() == action)
-            {
-                Start(holder, map, GetKeystone(holder));
-                return true;
-            }
-        }
-        ChatHandler(player->GetSession()).SendNotification(NoKeyReason(player));
         return true;
     }
 };

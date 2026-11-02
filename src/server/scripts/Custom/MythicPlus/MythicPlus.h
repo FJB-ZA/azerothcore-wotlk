@@ -29,6 +29,7 @@
 #include "Position.h"
 
 class Creature;
+class GameObject;
 class Item;
 class Map;
 class Player;
@@ -119,6 +120,8 @@ MythicRun* FindRun(Map* map);
 MythicRun* ActiveRun(Map* map);
 // Bot sessions have no client socket, and the core names them "headless"
 bool IsBot(Player* player);
+// Puts the keystone of the group member with that guid low in the Font of Power; returns why it can't, or empty
+std::string ActivateKey(Player* player, GameObject* font, uint32 holderLow);
 bool IsBoss(Creature* creature);
 // Hostile creatures the affixes act on (not pets, triggers, orbs or friendly NPCs), dead or alive
 bool IsEnemyKind(Creature* creature);
@@ -206,6 +209,8 @@ void SendWeek(Player* player);
 void SendRun(Player* player, MythicRun const& run);
 void SendResult(Player* player, MythicRun const& run, Keystone const& newKey, Crest crest, uint32 crests);
 void SendValor(Player* player);
+// The Font of Power's keys for the addon's keystone window: a count, then one message per holder
+void SendFontKeys(Player* player, std::vector<Player*> const& holders);
 // This week's runs and the best run per dungeon, for the Mythic+ Dungeons tab
 void SendHistory(Player* player);
 void SendVault(Player* player);
