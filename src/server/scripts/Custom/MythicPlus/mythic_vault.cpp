@@ -78,7 +78,8 @@ DungeonWeek ReadDungeonWeek(Player* player, uint32 week)
     return dungeons;
 }
 
-// A week's raid bosses: how many, each Raids slot's item level (0 while locked), and each kill's raid and difficulty
+// A week's raid bosses: how many, each Raids slot's item level (0 while locked), and each counted kill's raid and
+// difficulty
 struct RaidWeek
 {
     uint32 kills = 0;
@@ -88,22 +89,24 @@ struct RaidWeek
 
 RaidWeek ReadRaidWeek(Player* player, uint32 week)
 {
-    RaidWeek raids;
-    std::vector<uint16> levels;
-    if (QueryResult result = CharacterDatabase.Query("SELECT map, difficulty FROM mythic_plus_vault_activity WHERE "
-                                                     "guid = {} AND week = {} AND `row` = {}",
+    std::vector<RaidKill> rows;
+    if (QueryResult result = CharacterDatabase.Query("SELECT map, difficulty, ref FROM mythic_plus_vault_activity "
+                                                     "WHERE guid = {} AND week = {} AND `row` = {}",
                                                      player->GetGUID().GetCounter(), week, uint32(VaultRow::Raid)))
     {
         do
         {
             Field* fields = result->Fetch();
-            RaidLoot const kill{fields[0].Get<uint16>(), fields[1].Get<uint8>()};
-            if (uint16 const level = RaidItemLevel(kill.map, kill.difficulty))
-            {
-                levels.push_back(level);
-                raids.loot.push_back(kill);
-            }
+            rows.push_back(RaidKill{fields[0].Get<uint16>(), fields[1].Get<uint8>(), fields[2].Get<uint32>()});
         } while (result->NextRow());
+    }
+    // A row per boss and difficulty; the row counts each boss once, at its best difficulty
+    RaidWeek raids;
+    std::vector<uint16> levels;
+    for (RaidKill const& kill : BestKillPerBoss(rows))
+    {
+        levels.push_back(RaidItemLevel(kill.map, kill.difficulty));
+        raids.loot.push_back(RaidLoot{kill.map, kill.difficulty});
     }
     raids.kills = uint32(levels.size());
     raids.levels = NthBest(std::move(levels), VaultRow::Raid);
@@ -239,7 +242,7 @@ std::vector<VaultOption> RollOptions(Player* player, uint32 week, VaultWeek cons
         uint16 const itemLevel = vault.raids.levels[slot - 1];
         if (!itemLevel || HasOption(options, VaultRow::Raid, slot))
             continue;
-        if (uint32 const item = RollRaidItem(player, LootAt(vault.raids, itemLevel)))
+        if (uint32 const item = RollRaidItem(player, LootAt(vault.raids, itemLevel), itemLevel))
         {
             StoreOption(guid, week, VaultRow::Raid, slot, item);
             rolled = true;
@@ -260,17 +263,21 @@ std::vector<VaultOption> OptionsFor(Player* player, uint32 week, VaultWeek const
     return RollOptions(player, week, vault);
 }
 
-// Each Wrath raid boss counts once a week for everyone in the raid when it falls
+// A Wrath raid boss's kill, for everyone in the raid when it falls (game masters aside): a row per boss and
+// difficulty a week, which ReadRaidWeek counts once per boss
 void RecordRaidBoss(Map* map, uint32 creditEntry)
 {
     uint32 const week = CurrentWeek();
     uint16 const mapId = uint16(map->GetId());
     uint8 const difficulty = uint8(map->GetDifficulty());
+    // A difficulty the vault gives nothing for, such as the 40-man Naxxramas (533, difficulty 2)
+    if (!RaidItemLevel(mapId, difficulty))
+        return;
     map->DoForAllPlayers([&](Player* player)
     {
         if (player->IsGameMaster())
             return;
-        // IGNORE: the same boss again this week, on another lockout, adds nothing
+        // IGNORE: the same boss on the same difficulty again this week, on another lockout, adds nothing
         CharacterDatabase.Execute("INSERT IGNORE INTO mythic_plus_vault_activity (guid, week, `row`, map, difficulty, "
                                   "ref) VALUES ({}, {}, {}, {}, {}, {})",
                                   player->GetGUID().GetCounter(), week, uint32(VaultRow::Raid), mapId, difficulty,

@@ -189,8 +189,9 @@ struct RaidLoot
     uint16 map;
     uint8 difficulty;
 };
-// A Raid 0 item from any of `raids`' loot (mythic_plus_raid_item) that `player` can use, or 0
-uint32 RollRaidItem(Player* player, std::vector<RaidLoot> const& raids);
+// A Raid 0 item from any of `raids`' loot (mythic_plus_raid_item) that `player` can use, or 0: one of item level
+// `itemLevel` when there is one (MythicVaultPolicy.h RaidRewardPool)
+uint32 RollRaidItem(Player* player, std::vector<RaidLoot> const& raids, uint16 itemLevel);
 // "Mythic 5" or "Raid 2" for a ranked item; empty for any other
 std::string RankName(uint32 itemId);
 // Into the bags, or the mailbox when they're full

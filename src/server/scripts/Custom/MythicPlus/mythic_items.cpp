@@ -315,9 +315,9 @@ uint32 RollItemAtRank(Player* player, std::vector<uint16> const& maps, uint8 ran
     return suitable.empty() ? 0 : Acore::Containers::SelectRandomContainerElement(suitable);
 }
 
-uint32 RollRaidItem(Player* player, std::vector<RaidLoot> const& raids)
+uint32 RollRaidItem(Player* player, std::vector<RaidLoot> const& raids, uint16 itemLevel)
 {
-    std::vector<uint32> suitable;
+    std::vector<RaidReward> suitable;
     for (RaidLoot const& raid : raids)
     {
         auto const itr = raidIndexesByLoot.find(RaidKey(raid.map, raid.difficulty));
@@ -325,9 +325,10 @@ uint32 RollRaidItem(Player* player, std::vector<RaidLoot> const& raids)
             continue;
         for (uint32 index : itr->second)
             if (Suits(player, sObjectMgr->GetItemTemplate(RaidRankId(index, 0))))
-                suitable.push_back(RaidRankId(index, 0));
+                suitable.push_back(RaidReward{RaidRankId(index, 0), raidItems[index].baseLevel});
     }
-    return suitable.empty() ? 0 : Acore::Containers::SelectRandomContainerElement(suitable);
+    std::vector<uint32> const pool = RaidRewardPool(suitable, itemLevel);
+    return pool.empty() ? 0 : Acore::Containers::SelectRandomContainerElement(pool);
 }
 
 std::string RankName(uint32 itemId)

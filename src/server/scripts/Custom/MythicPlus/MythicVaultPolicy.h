@@ -110,6 +110,57 @@ constexpr bool CountsForRaid(uint16_t map, uint8_t creatureLevel)
     return FindRaid(map) && (map != OnyxiasLair || creatureLevel >= RaidMinCreatureLevel);
 }
 
+// A raid boss killed this week: where, on which difficulty, and its encounter credit
+struct RaidKill
+{
+    uint16_t map;
+    uint8_t difficulty;
+    uint32_t boss;
+};
+
+// The week's kills as the Raids row counts them: each boss once, however many difficulties it fell on (10- and
+// 25-man are separate lockouts with the same credit), at the difficulty giving the highest item level; kills on a
+// difficulty that gives none are left out. First-seen order is kept.
+inline std::vector<RaidKill> BestKillPerBoss(std::vector<RaidKill> const& kills)
+{
+    std::vector<RaidKill> best;
+    for (RaidKill const& kill : kills)
+    {
+        uint16_t const level = RaidItemLevel(kill.map, kill.difficulty);
+        if (!level)
+            continue;
+        auto const known = std::find_if(best.begin(), best.end(), [&](RaidKill const& other)
+                                        { return other.map == kill.map && other.boss == kill.boss; });
+        if (known == best.end())
+            best.push_back(kill);
+        else if (level > RaidItemLevel(known->map, known->difficulty))
+            *known = kill;
+    }
+    return best;
+}
+
+// An item a Raids slot could give: its Raid 0 id and its real item level
+struct RaidReward
+{
+    uint32_t id;
+    uint16_t itemLevel;
+};
+
+// A Raids slot's reward pool from the items its loot holds: those at the slot's item level, as retail's vault
+// promises, or all of them when none is
+inline std::vector<uint32_t> RaidRewardPool(std::vector<RaidReward> const& items, uint16_t itemLevel)
+{
+    std::vector<uint32_t> atLevel;
+    std::vector<uint32_t> all;
+    for (RaidReward const& item : items)
+    {
+        all.push_back(item.id);
+        if (item.itemLevel == itemLevel)
+            atLevel.push_back(item.id);
+    }
+    return atLevel.empty() ? all : atLevel;
+}
+
 // Each slot's value from the week's key levels (or raid item levels), best first: slot n takes the value at its
 // threshold, or 0 when there were fewer
 inline std::array<uint16_t, VaultSlots> NthBest(std::vector<uint16_t> values, VaultRow row)
