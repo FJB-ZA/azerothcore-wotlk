@@ -110,6 +110,12 @@ constexpr bool CountsForRaid(uint16_t map, uint8_t creatureLevel)
     return FindRaid(map) && (map != OnyxiasLair || creatureLevel >= RaidMinCreatureLevel);
 }
 
+// Whether a dungeon's last boss falling counts toward the World row: a heroic dungeon cleared without a keystone
+constexpr bool CountsForWorld(bool heroic, bool keystoneRun, bool dungeonCompleted)
+{
+    return heroic && !keystoneRun && dungeonCompleted;
+}
+
 // A raid boss killed this week: where, on which difficulty, and its encounter credit
 struct RaidKill
 {

@@ -28,7 +28,8 @@
 // and kept in mythic_plus_vault_option (characters SQL 2026_11_02_00_mythic_plus_vault.sql); the player takes one of
 // them at the Keystone Master. The Dungeons row counts the week's keystones (mythic_plus_runs); the Raids row the
 // week's Wrath raid bosses, each once (mythic_plus_vault_activity), and gives a Raid 0 item from the raid and
-// difficulty of its slot's kill. World stays locked until it counts anything.
+// difficulty of its slot's kill. The World row counts the week's heroic dungeons cleared without a key, each instance
+// once, and gives a Mythic 0 item from their loot.
 namespace MythicPlus
 {
 namespace
@@ -126,15 +127,47 @@ std::vector<RaidLoot> LootAt(RaidWeek const& raids, uint16 itemLevel)
     return loot;
 }
 
+// A week's heroic dungeons cleared without a key: how many, each World slot's item level (0 while locked), and the
+// dungeons, whose loot the slots roll from
+struct WorldWeek
+{
+    uint32 completed = 0;
+    std::array<uint16, VaultSlots> levels{};
+    std::vector<uint16> maps;
+};
+
+WorldWeek ReadWorldWeek(Player* player, uint32 week)
+{
+    WorldWeek world;
+    if (QueryResult result = CharacterDatabase.Query("SELECT map FROM mythic_plus_vault_activity "
+                                                     "WHERE guid = {} AND week = {} AND `row` = {}",
+                                                     player->GetGUID().GetCounter(), week, uint32(VaultRow::World)))
+    {
+        do
+        {
+            // A row per dungeon instance, so the same dungeon twice counts twice but is one place to take loot from
+            uint16 const map = result->Fetch()[0].Get<uint16>();
+            ++world.completed;
+            if (std::find(world.maps.begin(), world.maps.end(), map) == world.maps.end())
+                world.maps.push_back(map);
+        } while (result->NextRow());
+    }
+    for (uint8 slot = 1; slot <= VaultSlots; ++slot)
+        if (world.completed >= VaultThreshold(VaultRow::World, slot))
+            world.levels[slot - 1] = ItemLevelForRank(WorldRank);
+    return world;
+}
+
 struct VaultWeek
 {
     DungeonWeek dungeons;
     RaidWeek raids;
+    WorldWeek world;
 };
 
 VaultWeek ReadWeek(Player* player, uint32 week)
 {
-    return VaultWeek{ReadDungeonWeek(player, week), ReadRaidWeek(player, week)};
+    return VaultWeek{ReadDungeonWeek(player, week), ReadRaidWeek(player, week), ReadWorldWeek(player, week)};
 }
 
 // A week whose vault was opened the old way, a single item, counts as chosen too
@@ -202,10 +235,10 @@ uint32 ItemLevelOf(uint32 itemId)
     return item ? item->ItemLevel : 0;
 }
 
-// World counts nothing yet, so a keystone or a raid boss unlocks a slot; the best fills slot 1 first
+// A keystone, a raid boss or two heroic dungeons unlocks a slot; the best fills slot 1 first
 bool AnyUnlocked(VaultWeek const& vault)
 {
-    return vault.dungeons.levels[0] != 0 || vault.raids.levels[0] != 0;
+    return vault.dungeons.levels[0] != 0 || vault.raids.levels[0] != 0 || vault.world.levels[0] != 0;
 }
 
 void StoreOption(uint32 guid, uint32 week, VaultRow row, uint8 slot, uint32 item)
@@ -217,7 +250,8 @@ void StoreOption(uint32 guid, uint32 week, VaultRow row, uint8 slot, uint32 item
 }
 
 // `week`'s options, whether or not one was chosen: each unlocked slot without one yet rolls it, a Dungeons slot from
-// the week's dungeons at its key's rank, a Raids slot from its kill's raid and difficulty at Raid 0
+// the week's dungeons at its key's rank, a Raids slot from its kill's raid and difficulty at Raid 0, a World slot from
+// the heroics cleared at Mythic 0
 std::vector<VaultOption> RollOptions(Player* player, uint32 week, VaultWeek const& vault)
 {
     uint32 const guid = player->GetGUID().GetCounter();
@@ -245,6 +279,16 @@ std::vector<VaultOption> RollOptions(Player* player, uint32 week, VaultWeek cons
         if (uint32 const item = RollRaidItem(player, LootAt(vault.raids, itemLevel), itemLevel))
         {
             StoreOption(guid, week, VaultRow::Raid, slot, item);
+            rolled = true;
+        }
+    }
+    for (uint8 slot = 1; slot <= VaultSlots; ++slot)
+    {
+        if (!vault.world.levels[slot - 1] || HasOption(options, VaultRow::World, slot))
+            continue;
+        if (uint32 const item = RollItemAtRank(player, vault.world.maps, WorldRank))
+        {
+            StoreOption(guid, week, VaultRow::World, slot, item);
             rolled = true;
         }
     }
@@ -282,6 +326,28 @@ void RecordRaidBoss(Map* map, uint32 creditEntry)
                                   "ref) VALUES ({}, {}, {}, {}, {}, {})",
                                   player->GetGUID().GetCounter(), week, uint32(VaultRow::Raid), mapId, difficulty,
                                   creditEntry);
+    });
+}
+
+// A heroic dungeon cleared without a keystone, for everyone in it (game masters aside): a row per dungeon instance,
+// which ReadWorldWeek counts. A key run's last boss is the Dungeons row's; a run already begun or over is that.
+void RecordWorldDungeon(Map* map, bool dungeonCompleted)
+{
+    MythicRun const* run = FindRun(map);
+    if (!FindDungeon(map->GetId()) ||
+        !CountsForWorld(map->IsHeroic(), run && run->state != RunState::None, dungeonCompleted))
+        return;
+    uint32 const week = CurrentWeek();
+    uint16 const mapId = uint16(map->GetId());
+    uint32 const instanceId = map->GetInstanceId();
+    map->DoForAllPlayers([&](Player* player)
+    {
+        if (player->IsGameMaster())
+            return;
+        // IGNORE: the last boss credited twice for the instance adds nothing
+        CharacterDatabase.Execute("INSERT IGNORE INTO mythic_plus_vault_activity (guid, week, `row`, map, difficulty, "
+                                  "ref) VALUES ({}, {}, {}, {}, 1, {})",
+                                  player->GetGUID().GetCounter(), week, uint32(VaultRow::World), mapId, instanceId);
     });
 }
 
@@ -358,7 +424,6 @@ void SendVault(Player* player)
         VaultRow const row = VaultRow(index);
         for (uint8 slot = 1; slot <= VaultSlots; ++slot)
         {
-            // World counts nothing yet, so its slots stay locked
             uint32 progress = 0;
             uint32 itemLevel = 0;
             if (row == VaultRow::Dungeon)
@@ -371,6 +436,11 @@ void SendVault(Player* player)
             {
                 progress = shown.raids.kills;
                 itemLevel = shown.raids.levels[slot - 1];
+            }
+            else
+            {
+                progress = shown.world.completed;
+                itemLevel = shown.world.levels[slot - 1];
             }
             SendToClient(player, FormatVaultSlot(row, slot, progress, VaultThreshold(row, slot), itemLevel));
         }
@@ -393,7 +463,8 @@ public:
     }
 };
 
-// The Raids row's bosses: a kill credit in a Wrath raid (MythicVaultPolicy.h CountsForRaid)
+// The Raids row's bosses: a kill credit in a Wrath raid (MythicVaultPolicy.h CountsForRaid), and the World row's
+// dungeons: the last encounter of a heroic 5-man (CountsForWorld)
 class MythicVaultGlobalScript : public GlobalScript
 {
 public:
@@ -402,12 +473,15 @@ public:
     void OnAfterUpdateEncounterState(Map* map, EncounterCreditType type, uint32 creditEntry, Unit* source,
                                      Difficulty /*difficulty*/,
                                      std::list<DungeonEncounter const*> const* encounters,
-                                     uint32 /*dungeonCompleted*/, bool /*updated*/) override
+                                     uint32 dungeonCompleted, bool /*updated*/) override
     {
         // The source is the boss, or the caster of a credited spell
         if (CountsForRaid(uint16(map->GetId()), source ? source->GetLevel() : 0) &&
             IsEncounter(encounters, type, creditEntry))
             RecordRaidBoss(map, creditEntry);
+        // The last encounter of a dungeon sets dungeonCompleted
+        else if (map->IsDungeon())
+            RecordWorldDungeon(map, dungeonCompleted != 0);
     }
 };
 
