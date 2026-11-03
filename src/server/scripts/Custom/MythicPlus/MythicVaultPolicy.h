@@ -156,6 +156,35 @@ inline std::vector<RaidKill> BestKillPerBoss(std::vector<RaidKill> const& kills)
     return best;
 }
 
+// A raid and difficulty (0 10N, 1 25N, 2 10H, 3 25H) whose loot a Raids slot of the Great Vault gives
+struct RaidLoot
+{
+    uint16_t map;
+    uint8_t difficulty;
+};
+
+// Every raid and difficulty that gives `itemLevel`: a Raids slot's loot when its own kills' holds nothing the player
+// can use, so an unlocked slot still offers an item
+inline std::vector<RaidLoot> RaidsGiving(uint16_t itemLevel)
+{
+    std::vector<RaidLoot> loot;
+    for (RaidInfo const& raid : Raids)
+        for (uint8_t difficulty = 0; difficulty < raid.itemLevel.size(); ++difficulty)
+            if (itemLevel && raid.itemLevel[difficulty] == itemLevel)
+                loot.push_back(RaidLoot{raid.map, difficulty});
+    return loot;
+}
+
+// How near a raid's or dungeon's entrance a group member outside it must be to share a boss's credit
+inline constexpr float CreditRange = 500.0f;
+
+// Whether a group member outside the instance shares a boss's credit: one saved to its lockout and at its door,
+// running back after a release, say. One who zoned in and left keeps only a temporary bind, and one far away nothing.
+constexpr bool CreditedOutside(bool permanentBind, float distanceToEntrance)
+{
+    return permanentBind && distanceToEntrance <= CreditRange;
+}
+
 // An item a Raids slot could give: its Raid 0 id and its real item level
 struct RaidReward
 {

@@ -322,8 +322,7 @@ public:
             return;
         if (player->GetLevel() >= HeroicLevel && !GetKeystone(player).map)
             SetKeystone(player, Dungeons[urand(0, uint32(Dungeons.size() - 1))].map, MinKeyLevel);
-        if (std::vector<VaultOption> const options = VaultOptions(player); !options.empty())
-            ClaimOption(player, options.front().row, options.front().slot);
+        ClaimBestOption(player);
         SpendCrestsOnGear(player);
     }
 

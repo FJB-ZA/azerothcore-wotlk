@@ -18,6 +18,7 @@
 #include <vector>
 
 #include "DataMap.h"
+#include "DatabaseEnvFwd.h"
 #include "Define.h"
 #include "MythicAffixPolicy.h"
 #include "MythicCrestPolicy.h"
@@ -183,19 +184,15 @@ bool IsMythicItem(uint32 itemId);
 uint32 RollItem(Player* player, uint16 map);
 // The same from any of `maps`' chests, at Mythic `rank`
 uint32 RollItemAtRank(Player* player, std::vector<uint16> const& maps, uint8 rank);
-// A raid and difficulty (0 10N, 1 25N, 2 10H, 3 25H) whose loot a Raids slot of the Great Vault gives
-struct RaidLoot
-{
-    uint16 map;
-    uint8 difficulty;
-};
 // A Raid 0 item from any of `raids`' loot (mythic_plus_raid_item) that `player` can use, or 0: one of item level
 // `itemLevel` when there is one (MythicVaultPolicy.h RaidRewardPool)
 uint32 RollRaidItem(Player* player, std::vector<RaidLoot> const& raids, uint16 itemLevel);
 // "Mythic 5" or "Raid 2" for a ranked item; empty for any other
 std::string RankName(uint32 itemId);
-// Into the bags, or the mailbox when they're full
+// Into the bags, or the mailbox when they're full, saved at once
 void GiveItem(Player* player, uint32 itemId);
+// The same, saved in `trans` with whatever else it holds, so a reward and the record of it are written together
+void GiveItem(Player* player, uint32 itemId, CharacterDatabaseTransaction trans);
 // Raises the Mythic+ or raid item at bag/slot one rank; returns why it didn't, or empty
 std::string UpgradeItem(Player* player, uint8 bag, uint8 slot);
 // The item's next rank cost, for the forge's text: empty when it can't go higher
@@ -236,6 +233,8 @@ struct VaultOption
 std::vector<VaultOption> VaultOptions(Player* player, bool shown = false);
 // Gives the option in `row`'s `slot` and closes the week's vault; returns why not, or empty. Bots choose anywhere.
 std::string ClaimOption(Player* player, VaultRow row, uint8 slot);
+// A bot's choice, at login and after a run: the best item level waiting, if any
+void ClaimBestOption(Player* bot);
 // The vault's options and rows for the addon's Great Vault window
 void SendVault(Player* player);
 }

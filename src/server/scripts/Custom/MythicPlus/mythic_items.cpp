@@ -103,12 +103,15 @@ void BuildRankTemplates()
         uint32 const entry = fields[1].Get<uint32>();
         uint16 const map = fields[2].Get<uint16>();
         ItemTemplate const* base = sObjectMgr->GetItemTemplate(entry);
-        if (index >= MaxItemIndex || index != rankedItems.size() || !base)
+        // A bad row loses only its own items: later rows keep their index, so their ids, and players keep them
+        if (index >= MaxItemIndex || index < rankedItems.size() || !base)
         {
-            LOG_ERROR("sql.sql", "Mythic+: mythic_plus_item row {} (item {}) is out of order, past {} or not an item; "
-                                 "Mythic+ items stop there.", index, entry, MaxItemIndex);
-            break;
+            LOG_ERROR("sql.sql", "Mythic+: mythic_plus_item row {} (item {}) repeats an index, is past {} or isn't an "
+                                 "item, so it's skipped.", index, entry, MaxItemIndex);
+            continue;
         }
+        // A skipped or missing index stays empty (entry 0), which no roll picks
+        rankedItems.resize(index, RankedItem{0, 0});
         rankedItems.push_back({entry, map});
         indexesByMap[map].push_back(index);
         for (uint8 rank = 0; rank <= MaxRank; ++rank)
@@ -145,13 +148,15 @@ void BuildRaidRankTemplates()
         uint16 const map = fields[2].Get<uint16>();
         uint8 const difficulty = fields[3].Get<uint8>();
         ItemTemplate const* base = sObjectMgr->GetItemTemplate(entry);
-        if (index >= MaxRaidItemIndex || index != raidItems.size() || !base)
+        // As BuildRankTemplates: a bad row is skipped, and later rows keep their index
+        if (index >= MaxRaidItemIndex || index < raidItems.size() || !base)
         {
-            LOG_ERROR("sql.sql", "Mythic+: mythic_plus_raid_item row {} (item {}) is out of order, past {} or not an "
-                                 "item; raid items stop there.", index, entry, MaxRaidItemIndex);
-            break;
+            LOG_ERROR("sql.sql", "Mythic+: mythic_plus_raid_item row {} (item {}) repeats an index, is past {} or "
+                                 "isn't an item, so it's skipped.", index, entry, MaxRaidItemIndex);
+            continue;
         }
         uint16 const baseLevel = uint16(base->ItemLevel);
+        raidItems.resize(index, RaidItem{0, 0});
         raidItems.push_back({entry, baseLevel});
         raidIndexesByLoot[RaidKey(map, difficulty)].push_back(index);
         for (uint8 rank = 0; rank <= MaxRaidRank; ++rank)
@@ -191,9 +196,11 @@ struct Place
 
 std::optional<Place> PlaceOf(uint32 itemId)
 {
-    if (std::optional<RankRef> const ref = DecodeRankId(itemId); ref && ref->index < rankedItems.size())
+    if (std::optional<RankRef> const ref = DecodeRankId(itemId);
+        ref && ref->index < rankedItems.size() && rankedItems[ref->index].entry)
         return Place{false, ref->index, ref->rank};
-    if (std::optional<RankRef> const ref = DecodeRaidRankId(itemId); ref && ref->index < raidItems.size())
+    if (std::optional<RankRef> const ref = DecodeRaidRankId(itemId);
+        ref && ref->index < raidItems.size() && raidItems[ref->index].entry)
         return Place{true, ref->index, ref->rank};
     return std::nullopt;
 }
@@ -227,14 +234,12 @@ bool Suits(Player* player, ItemTemplate const* item)
     return !bodyArmor || item->SubClass == PreferredArmor(player);
 }
 
-void MailItem(Player* player, Item* item)
+void MailItem(Player* player, Item* item, CharacterDatabaseTransaction trans)
 {
-    CharacterDatabaseTransaction trans = CharacterDatabase.BeginTransaction();
     item->SaveToDB(trans);
     MailDraft("Mythic+ reward", "Your bags were full, so your Mythic+ item came by mail.")
         .AddItem(item)
         .SendMailTo(trans, player, MailSender(player, MAIL_STATIONERY_GM), MAIL_CHECK_MASK_COPIED);
-    CharacterDatabase.CommitTransaction(trans);
 }
 
 struct ItemState
@@ -291,7 +296,7 @@ void RestoreState(Item* item, ItemState const& state)
 bool IsMythicItem(uint32 itemId)
 {
     std::optional<RankRef> const ref = DecodeRankId(itemId);
-    return ref && ref->index < rankedItems.size();
+    return ref && ref->index < rankedItems.size() && rankedItems[ref->index].entry;
 }
 
 uint32 RollItem(Player* player, uint16 map)
@@ -339,15 +344,25 @@ std::string RankName(uint32 itemId)
 
 void GiveItem(Player* player, uint32 itemId)
 {
+    CharacterDatabaseTransaction trans = CharacterDatabase.BeginTransaction();
+    GiveItem(player, itemId, trans);
+    CharacterDatabase.CommitTransaction(trans);
+}
+
+void GiveItem(Player* player, uint32 itemId, CharacterDatabaseTransaction trans)
+{
     ItemPosCountVec dest;
     if (player->CanStoreNewItem(NULL_BAG, NULL_SLOT, dest, itemId, 1) == EQUIP_ERR_OK)
     {
         if (Item* item = player->StoreNewItem(dest, itemId, true, Item::GenerateItemRandomPropertyId(itemId)))
+        {
             player->SendNewItem(item, 1, true, false, true);
+            player->SaveInventoryAndGoldToDB(trans);
+        }
         return;
     }
     if (Item* item = Item::CreateItem(itemId, 1, player))
-        MailItem(player, item);
+        MailItem(player, item, trans);
 }
 
 std::string UpgradeItem(Player* player, uint8 bag, uint8 slot)
@@ -402,7 +417,11 @@ std::string UpgradeItem(Player* player, uint8 bag, uint8 slot)
     if (player->CanStoreItem(NULL_BAG, NULL_SLOT, dest, upgraded, false) == EQUIP_ERR_OK)
         player->StoreItem(dest, upgraded, true);
     else
-        MailItem(player, upgraded);
+    {
+        CharacterDatabaseTransaction trans = CharacterDatabase.BeginTransaction();
+        MailItem(player, upgraded, trans);
+        CharacterDatabase.CommitTransaction(trans);
+    }
     return {};
 }
 

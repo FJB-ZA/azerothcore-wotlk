@@ -41,20 +41,6 @@ namespace
 {
 constexpr char const* DataKey = "MythicPlusVault";
 
-// The week the player is known to have chosen in, so a second choice is refused without asking the database, and the
-// week whose options the player was last shown, so a choice from before the reset is refused
-struct VaultData : public DataMap::Base
-{
-    bool chosen = false;
-    uint32 chosenWeek = 0;
-    uint32 shownWeek = VaultNotShown;
-};
-
-VaultData* DataOf(Player* player)
-{
-    return player->CustomData.GetDefault<VaultData>(DataKey);
-}
-
 // A week's keystones: how many there were, and each Dungeons slot's key level (0 while locked)
 struct DungeonWeek
 {
@@ -176,25 +162,51 @@ VaultWeek ReadWeek(Player* player, uint32 week)
     return VaultWeek{ReadDungeonWeek(player, week), ReadRaidWeek(player, week), ReadWorldWeek(player, week)};
 }
 
+// What the vault knows of the player's last week, which is over and so doesn't change: whether a reward was chosen
+// (only ClaimOption chooses one), its activity and its options, each read once and kept for the week it's of. And the
+// week whose options the player was last shown, so a choice from before the reset is refused.
+struct VaultData : public DataMap::Base
+{
+    bool chosen = false;
+    uint32 chosenWeek = VaultNotShown;
+    uint32 shownWeek = VaultNotShown;
+    uint32 activityWeek = VaultNotShown;
+    VaultWeek activity;
+    uint32 optionsWeek = VaultNotShown;
+    std::vector<VaultOption> options;
+};
+
+VaultData* DataOf(Player* player)
+{
+    return player->CustomData.GetDefault<VaultData>(DataKey);
+}
+
+VaultWeek const& LastWeek(Player* player, uint32 week)
+{
+    VaultData* data = DataOf(player);
+    if (data->activityWeek != week)
+    {
+        data->activity = ReadWeek(player, week);
+        data->activityWeek = week;
+    }
+    return data->activity;
+}
+
 // A week whose vault was opened the old way, a single item, counts as chosen too
 bool Chosen(Player* player, uint32 week)
 {
     VaultData* data = DataOf(player);
-    if (data->chosen && data->chosenWeek == week)
-        return true;
+    if (data->chosenWeek == week)
+        return data->chosen;
     uint32 const guid = player->GetGUID().GetCounter();
-    bool const chosen =
+    data->chosen =
         CharacterDatabase.Query("SELECT 1 FROM mythic_plus_vault_option WHERE guid = {} AND week = {} AND chosen = 1 "
                                 "LIMIT 1",
                                 guid, week) ||
         CharacterDatabase.Query(
             "SELECT 1 FROM mythic_plus_week WHERE guid = {} AND week = {} AND vault_claimed = 1", guid, week);
-    if (chosen)
-    {
-        data->chosen = true;
-        data->chosenWeek = week;
-    }
-    return chosen;
+    data->chosenWeek = week;
+    return data->chosen;
 }
 
 std::vector<uint16> WeekMaps(uint32 guid, uint32 week)
@@ -255,15 +267,56 @@ void StoreOption(uint32 guid, uint32 week, VaultRow row, uint8 slot, uint32 item
                                     guid, week, uint32(row), slot, item);
 }
 
+// Every Mythic+ dungeon, whose loot a Dungeons or World slot rolls from when its own dungeons' has nothing the player
+// can use
+std::vector<uint16> const& AllDungeonMaps()
+{
+    static std::vector<uint16> const maps = []
+    {
+        std::vector<uint16> all;
+        for (DungeonInfo const& dungeon : Dungeons)
+            all.push_back(dungeon.map);
+        return all;
+    }();
+    return maps;
+}
+
+uint32 RollAtRank(Player* player, std::vector<uint16> const& maps, uint8 rank)
+{
+    uint32 const item = RollItemAtRank(player, maps, rank);
+    return item ? item : RollItemAtRank(player, AllDungeonMaps(), rank);
+}
+
+uint32 RollRaid(Player* player, std::vector<RaidLoot> const& loot, uint16 itemLevel)
+{
+    uint32 const item = RollRaidItem(player, loot, itemLevel);
+    return item ? item : RollRaidItem(player, RaidsGiving(itemLevel), itemLevel);
+}
+
 // `week`'s options, whether or not one was chosen: each unlocked slot without one yet rolls it, a Dungeons slot from
 // the week's dungeons at its key's rank, a Raids slot from its kill's raid and difficulty at Raid 0, a World slot from
-// the heroics cleared at Mythic 0
+// the heroics cleared at Mythic 0; each from wider loot when that has nothing the player can use. Kept for the week
+// once every unlocked slot has one.
 std::vector<VaultOption> RollOptions(Player* player, uint32 week, VaultWeek const& vault)
 {
+    VaultData* data = DataOf(player);
+    if (data->optionsWeek == week)
+        return data->options;
     uint32 const guid = player->GetGUID().GetCounter();
     std::vector<VaultOption> options = StoredOptions(guid, week);
     std::vector<uint16> maps;
     bool rolled = false;
+    bool complete = true;
+    auto const store = [&](VaultRow row, uint8 slot, uint32 item)
+    {
+        if (!item)
+        {
+            complete = false;
+            return;
+        }
+        StoreOption(guid, week, row, slot, item);
+        rolled = true;
+    };
     for (uint8 slot = 1; slot <= VaultSlots; ++slot)
     {
         uint8 const level = uint8(vault.dungeons.levels[slot - 1]);
@@ -271,37 +324,35 @@ std::vector<VaultOption> RollOptions(Player* player, uint32 week, VaultWeek cons
             continue;
         if (maps.empty())
             maps = WeekMaps(guid, week);
-        if (uint32 const item = RollItemAtRank(player, maps, VaultRankForKey(level)))
-        {
-            StoreOption(guid, week, VaultRow::Dungeon, slot, item);
-            rolled = true;
-        }
+        store(VaultRow::Dungeon, slot, RollAtRank(player, maps, VaultRankForKey(level)));
     }
     for (uint8 slot = 1; slot <= VaultSlots; ++slot)
     {
         uint16 const itemLevel = vault.raids.levels[slot - 1];
         if (!itemLevel || HasOption(options, VaultRow::Raid, slot))
             continue;
-        if (uint32 const item = RollRaidItem(player, LootAt(vault.raids, itemLevel), itemLevel))
-        {
-            StoreOption(guid, week, VaultRow::Raid, slot, item);
-            rolled = true;
-        }
+        store(VaultRow::Raid, slot, RollRaid(player, LootAt(vault.raids, itemLevel), itemLevel));
     }
     for (uint8 slot = 1; slot <= VaultSlots; ++slot)
     {
         if (!vault.world.levels[slot - 1] || HasOption(options, VaultRow::World, slot))
             continue;
-        if (uint32 const item = RollItemAtRank(player, vault.world.maps, WorldRank))
-        {
-            StoreOption(guid, week, VaultRow::World, slot, item);
-            rolled = true;
-        }
+        store(VaultRow::World, slot, RollAtRank(player, vault.world.maps, WorldRank));
     }
     if (rolled)
         options = StoredOptions(guid, week);
-    std::stable_sort(options.begin(), options.end(), [](VaultOption const& a, VaultOption const& b)
-                     { return ItemLevelOf(a.item) > ItemLevelOf(b.item); });
+    std::vector<std::pair<uint32, VaultOption>> byLevel;
+    for (VaultOption const& option : options)
+        byLevel.emplace_back(ItemLevelOf(option.item), option);
+    std::stable_sort(byLevel.begin(), byLevel.end(),
+                     [](auto const& a, auto const& b) { return a.first > b.first; });
+    for (size_t i = 0; i < byLevel.size(); ++i)
+        options[i] = byLevel[i].second;
+    if (complete)
+    {
+        data->options = options;
+        data->optionsWeek = week;
+    }
     return options;
 }
 
@@ -313,22 +364,30 @@ std::vector<VaultOption> OptionsFor(Player* player, uint32 week, VaultWeek const
     return RollOptions(player, week, vault);
 }
 
-// Whether `player` is bound to `map`'s instance (on its difficulty) though not in it: released and running back, say
-bool BoundTo(Player* player, Map* map)
+// Whether `player`, outside `map`, shares its boss's credit (CreditedOutside): saved to the instance's lockout (on its
+// difficulty) and near its entrance, released and running back, say
+bool SharesCredit(Player* player, Map* map)
 {
     InstancePlayerBind const* bind =
         sInstanceSaveMgr->PlayerGetBoundInstance(player->GetGUID(), map->GetId(), map->GetDifficulty());
-    return bind && bind->save && bind->save->GetInstanceId() == map->GetInstanceId();
+    if (!bind || !bind->save || bind->save->GetInstanceId() != map->GetInstanceId())
+        return false;
+    AreaTriggerTeleport const* entrance = sObjectMgr->GetGoBackTrigger(map->GetId());
+    if (!entrance || player->GetMapId() != entrance->target_mapId)
+        return false;
+    return CreditedOutside(bind->perm,
+                           player->GetExactDist(entrance->target_X, entrance->target_Y, entrance->target_Z));
 }
 
-// Everyone a boss in `map` credits, game masters aside: the players in it, and their group's members bound to the
-// instance but outside it, so a player whose bots finish the boss while they run back still gets it. Each once.
-void ForEachCredited(Map* map, std::function<void(Player*)> const& credit)
+// Everyone a boss in `map` credits, game masters and players below the heroic level aside: the players in it, and
+// their group's members outside it who are saved to it and near its door, so a player whose bots finish the boss while
+// they run back still gets it. Each once. Returns how many were credited.
+uint32 ForEachCredited(Map* map, std::function<void(Player*)> const& credit)
 {
     std::vector<ObjectGuid> credited;
     auto const give = [&](Player* player)
     {
-        if (player->IsGameMaster() ||
+        if (player->IsGameMaster() || player->GetLevel() < HeroicLevel ||
             std::find(credited.begin(), credited.end(), player->GetGUID()) != credited.end())
             return;
         credited.push_back(player->GetGUID());
@@ -343,8 +402,9 @@ void ForEachCredited(Map* map, std::function<void(Player*)> const& credit)
     });
     for (Group* group : groups)
         for (GroupReference* member = group->GetFirstMember(); member; member = member->next())
-            if (Player* player = member->GetSource(); player && player->GetMap() != map && BoundTo(player, map))
+            if (Player* player = member->GetSource(); player && player->GetMap() != map && SharesCredit(player, map))
                 give(player);
+    return uint32(credited.size());
 }
 
 // A Wrath raid boss's kill, for everyone it credits (ForEachCredited): a row per boss and difficulty a week, which
@@ -387,8 +447,8 @@ uint32 NextWorldRef()
 }
 
 // A heroic dungeon cleared without a keystone, for everyone it credits (ForEachCredited): a row per clear, its ref the
-// completion's time (WorldClearRef), which ReadWorldWeek counts. The map is marked so the same instance counts once.
-// A key run's last boss is the Dungeons row's; a run already begun or over is that.
+// completion's time (WorldClearRef), which ReadWorldWeek counts. The map is marked once someone is credited, so the
+// same instance counts once. A key run's last boss is the Dungeons row's; a run already begun or over is that.
 void RecordWorldDungeon(Map* map, bool dungeonCompleted)
 {
     MythicRun const* run = FindRun(map);
@@ -396,16 +456,17 @@ void RecordWorldDungeon(Map* map, bool dungeonCompleted)
         !CountsForWorld(map->IsHeroic(), run && run->state != RunState::None, dungeonCompleted,
                         map->CustomData.Get<WorldCredited>(WorldCreditedKey) != nullptr))
         return;
-    map->CustomData.Set(WorldCreditedKey, new WorldCredited());
     uint32 const week = CurrentWeek();
     uint16 const mapId = uint16(map->GetId());
     uint32 const ref = NextWorldRef();
-    ForEachCredited(map, [&](Player* player)
+    uint32 const credited = ForEachCredited(map, [&](Player* player)
     {
         CharacterDatabase.Execute("INSERT IGNORE INTO mythic_plus_vault_activity (guid, week, `row`, map, difficulty, "
                                   "ref) VALUES ({}, {}, {}, {}, 1, {})",
                                   player->GetGUID().GetCounter(), week, uint32(VaultRow::World), mapId, ref);
     });
+    if (credited)
+        map->CustomData.Set(WorldCreditedKey, new WorldCredited());
 }
 
 // Whether the credit is one of the map's encounters, not just any boss-flagged creature or credited spell
@@ -421,7 +482,7 @@ std::vector<VaultOption> VaultOptions(Player* player, bool shown)
     uint32 const week = CurrentWeek();
     if (!week)
         return {};
-    std::vector<VaultOption> options = OptionsFor(player, week - 1, ReadWeek(player, week - 1));
+    std::vector<VaultOption> options = OptionsFor(player, week - 1, LastWeek(player, week - 1));
     if (shown && !options.empty())
         DataOf(player)->shownWeek = week - 1;
     return options;
@@ -432,9 +493,9 @@ std::string ClaimOption(Player* player, VaultRow row, uint8 slot)
     if (!IsBot(player) && !player->FindNearestCreature(KeystoneMasterEntry, ForgeRange))
         return "Visit the Great Vault in Dalaran to choose your reward.";
     uint32 const week = CurrentWeek();
-    VaultWeek const vault = week ? ReadWeek(player, week - 1) : VaultWeek{};
-    if (!AnyUnlocked(vault))
+    if (!week || !AnyUnlocked(LastWeek(player, week - 1)))
         return "The Great Vault holds nothing for you this week.";
+    VaultWeek const& vault = LastWeek(player, week - 1);
     if (Chosen(player, week - 1))
         return "You have already chosen this week's reward.";
     VaultData* data = DataOf(player);
@@ -450,15 +511,25 @@ std::string ClaimOption(Player* player, VaultRow row, uint8 slot)
                                      { return candidate.row == row && candidate.slot == slot; });
     if (option == options.end())
         return "That slot of the Great Vault holds no reward this week.";
-    // Closed in memory and at once in the database before the item is given, so a second choice gets nothing
+    // Closed in memory first, so a second choice gets nothing; in the database the choice and the item, in the bags or
+    // the mail, are written in one transaction, so a crash between them loses neither
     data->chosen = true;
     data->chosenWeek = week - 1;
-    CharacterDatabase.DirectExecute("UPDATE mythic_plus_vault_option SET chosen = 1 WHERE guid = {} AND week = {} AND "
-                                    "`row` = {} AND slot = {}",
-                                    player->GetGUID().GetCounter(), week - 1, uint32(row), slot);
-    GiveItem(player, option->item);
+    uint32 const item = option->item;
+    CharacterDatabaseTransaction trans = CharacterDatabase.BeginTransaction();
+    trans->Append("UPDATE mythic_plus_vault_option SET chosen = 1 WHERE guid = {} AND week = {} AND `row` = {} AND "
+                  "slot = {}",
+                  player->GetGUID().GetCounter(), week - 1, uint32(row), slot);
+    GiveItem(player, item, trans);
+    CharacterDatabase.CommitTransaction(trans);
     SendVault(player);
     return {};
+}
+
+void ClaimBestOption(Player* bot)
+{
+    if (std::vector<VaultOption> const options = VaultOptions(bot); !options.empty())
+        ClaimOption(bot, options.front().row, options.front().slot);
 }
 
 void SendVault(Player* player)
@@ -466,13 +537,13 @@ void SendVault(Player* player)
     if (IsBot(player))
         return;
     uint32 const week = CurrentWeek();
-    VaultWeek const last = week ? ReadWeek(player, week - 1) : VaultWeek{};
-    std::vector<VaultOption> const options = week ? OptionsFor(player, week - 1, last) : std::vector<VaultOption>{};
+    std::vector<VaultOption> const options =
+        week ? OptionsFor(player, week - 1, LastWeek(player, week - 1)) : std::vector<VaultOption>{};
     if (!options.empty())
         DataOf(player)->shownWeek = week - 1;
     // While options wait the rows show the week they came from, as retail's; once one is chosen, this week's
     // progress, the runs from memory
-    VaultWeek const shown = options.empty() ? ReadWeek(player, week) : last;
+    VaultWeek const shown = options.empty() ? ReadWeek(player, week) : LastWeek(player, week - 1);
     SendToClient(player, FormatVault(!options.empty()));
     for (VaultOption const& option : options)
         SendToClient(player, FormatVaultOption(option.row, option.slot, option.item));
