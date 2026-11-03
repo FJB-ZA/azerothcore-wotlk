@@ -110,10 +110,21 @@ constexpr bool CountsForRaid(uint16_t map, uint8_t creatureLevel)
     return FindRaid(map) && (map != OnyxiasLair || creatureLevel >= RaidMinCreatureLevel);
 }
 
-// Whether a dungeon's last boss falling counts toward the World row: a heroic dungeon cleared without a keystone
-constexpr bool CountsForWorld(bool heroic, bool keystoneRun, bool dungeonCompleted)
+// Whether a dungeon's last boss falling counts toward the World row: a heroic dungeon cleared without a keystone, once
+// per instance (a last boss credited again in the same instance adds nothing)
+constexpr bool CountsForWorld(bool heroic, bool keystoneRun, bool dungeonCompleted, bool alreadyCredited)
 {
-    return heroic && !keystoneRun && dungeonCompleted;
+    return heroic && !keystoneRun && dungeonCompleted && !alreadyCredited;
+}
+
+// A World row clear's ref, unique per clear: the completion's unix time, or one past the last ref given when that is
+// as late (two clears in the same second); never 0. Not the instance id: this core's instance ids start at 1 and
+// refill gaps on every restart, and heroic saves go at the daily reset, so the same dungeon in the same week often
+// gets the same id again and the second clear would collide with the first.
+constexpr uint32_t WorldClearRef(uint32_t now, uint32_t lastRef)
+{
+    uint32_t const ref = now > lastRef ? now : lastRef + 1;
+    return ref ? ref : 1;
 }
 
 // A raid boss killed this week: where, on which difficulty, and its encounter credit

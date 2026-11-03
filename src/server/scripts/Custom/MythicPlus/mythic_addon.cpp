@@ -90,10 +90,10 @@ void SendRun(Player* player, MythicRun const& run)
     SendToClient(player, FormatRun(snapshot));
 }
 
-void SendResult(Player* player, MythicRun const& run, Keystone const& newKey, Crest crest, uint32 crests)
+void SendResult(Player* player, MythicRun const& run, Keystone const& newKey, Crest crest, uint32 crests, bool ownKey)
 {
     SendToClient(player, FormatResult(run.dungeon ? run.dungeon->map : 0, run.level, uint32(run.finalMs / 1000),
-                                      run.upgrade, newKey.map, newKey.level, crest, crests));
+                                      run.upgrade, newKey.map, newKey.level, crest, crests, ownKey));
 }
 
 void SendValor(Player* player)

@@ -9,12 +9,17 @@
 
 #include <algorithm>
 #include <array>
+#include <functional>
 #include <list>
+#include <mutex>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "DatabaseEnv.h"
+#include "GameTime.h"
+#include "Group.h"
+#include "InstanceSaveMgr.h"
 #include "Map.h"
 #include "MythicItemPolicy.h"
 #include "MythicPlus.h"
@@ -28,8 +33,8 @@
 // and kept in mythic_plus_vault_option (characters SQL 2026_11_02_00_mythic_plus_vault.sql); the player takes one of
 // them at the Keystone Master. The Dungeons row counts the week's keystones (mythic_plus_runs); the Raids row the
 // week's Wrath raid bosses, each once (mythic_plus_vault_activity), and gives a Raid 0 item from the raid and
-// difficulty of its slot's kill. The World row counts the week's heroic dungeons cleared without a key, each instance
-// once, and gives a Mythic 0 item from their loot.
+// difficulty of its slot's kill. The World row counts the week's heroic dungeons cleared without a key, each clear
+// once (the same dungeon cleared twice counts twice), and gives a Mythic 0 item from their loot.
 namespace MythicPlus
 {
 namespace
@@ -145,7 +150,8 @@ WorldWeek ReadWorldWeek(Player* player, uint32 week)
     {
         do
         {
-            // A row per dungeon instance, so the same dungeon twice counts twice but is one place to take loot from
+            // A row per clear (RecordWorldDungeon), so the same dungeon twice counts twice but is one place to take
+            // loot from
             uint16 const map = result->Fetch()[0].Get<uint16>();
             ++world.completed;
             if (std::find(world.maps.begin(), world.maps.end(), map) == world.maps.end())
@@ -307,8 +313,42 @@ std::vector<VaultOption> OptionsFor(Player* player, uint32 week, VaultWeek const
     return RollOptions(player, week, vault);
 }
 
-// A Wrath raid boss's kill, for everyone in the raid when it falls (game masters aside): a row per boss and
-// difficulty a week, which ReadRaidWeek counts once per boss
+// Whether `player` is bound to `map`'s instance (on its difficulty) though not in it: released and running back, say
+bool BoundTo(Player* player, Map* map)
+{
+    InstancePlayerBind const* bind =
+        sInstanceSaveMgr->PlayerGetBoundInstance(player->GetGUID(), map->GetId(), map->GetDifficulty());
+    return bind && bind->save && bind->save->GetInstanceId() == map->GetInstanceId();
+}
+
+// Everyone a boss in `map` credits, game masters aside: the players in it, and their group's members bound to the
+// instance but outside it, so a player whose bots finish the boss while they run back still gets it. Each once.
+void ForEachCredited(Map* map, std::function<void(Player*)> const& credit)
+{
+    std::vector<ObjectGuid> credited;
+    auto const give = [&](Player* player)
+    {
+        if (player->IsGameMaster() ||
+            std::find(credited.begin(), credited.end(), player->GetGUID()) != credited.end())
+            return;
+        credited.push_back(player->GetGUID());
+        credit(player);
+    };
+    std::vector<Group*> groups;
+    map->DoForAllPlayers([&](Player* player)
+    {
+        give(player);
+        if (Group* group = player->GetGroup(); group && std::find(groups.begin(), groups.end(), group) == groups.end())
+            groups.push_back(group);
+    });
+    for (Group* group : groups)
+        for (GroupReference* member = group->GetFirstMember(); member; member = member->next())
+            if (Player* player = member->GetSource(); player && player->GetMap() != map && BoundTo(player, map))
+                give(player);
+}
+
+// A Wrath raid boss's kill, for everyone it credits (ForEachCredited): a row per boss and difficulty a week, which
+// ReadRaidWeek counts once per boss
 void RecordRaidBoss(Map* map, uint32 creditEntry)
 {
     uint32 const week = CurrentWeek();
@@ -317,10 +357,8 @@ void RecordRaidBoss(Map* map, uint32 creditEntry)
     // A difficulty the vault gives nothing for, such as the 40-man Naxxramas (533, difficulty 2)
     if (!RaidItemLevel(mapId, difficulty))
         return;
-    map->DoForAllPlayers([&](Player* player)
+    ForEachCredited(map, [&](Player* player)
     {
-        if (player->IsGameMaster())
-            return;
         // IGNORE: the same boss on the same difficulty again this week, on another lockout, adds nothing
         CharacterDatabase.Execute("INSERT IGNORE INTO mythic_plus_vault_activity (guid, week, `row`, map, difficulty, "
                                   "ref) VALUES ({}, {}, {}, {}, {}, {})",
@@ -329,25 +367,44 @@ void RecordRaidBoss(Map* map, uint32 creditEntry)
     });
 }
 
-// A heroic dungeon cleared without a keystone, for everyone in it (game masters aside): a row per dungeon instance,
-// which ReadWorldWeek counts. A key run's last boss is the Dungeons row's; a run already begun or over is that.
+// Kept on the dungeon's map once its clear is credited, so its last boss credited again (a second credit for the same
+// encounter) adds nothing
+constexpr char const* WorldCreditedKey = "MythicPlusVaultWorld";
+
+struct WorldCredited : public DataMap::Base
+{
+};
+
+// The last World ref given, across all maps (map updates run on several threads)
+std::mutex worldRefLock;
+uint32 lastWorldRef = 0;
+
+uint32 NextWorldRef()
+{
+    std::lock_guard<std::mutex> guard(worldRefLock);
+    lastWorldRef = WorldClearRef(uint32(GameTime::GetGameTime().count()), lastWorldRef);
+    return lastWorldRef;
+}
+
+// A heroic dungeon cleared without a keystone, for everyone it credits (ForEachCredited): a row per clear, its ref the
+// completion's time (WorldClearRef), which ReadWorldWeek counts. The map is marked so the same instance counts once.
+// A key run's last boss is the Dungeons row's; a run already begun or over is that.
 void RecordWorldDungeon(Map* map, bool dungeonCompleted)
 {
     MythicRun const* run = FindRun(map);
     if (!FindDungeon(map->GetId()) ||
-        !CountsForWorld(map->IsHeroic(), run && run->state != RunState::None, dungeonCompleted))
+        !CountsForWorld(map->IsHeroic(), run && run->state != RunState::None, dungeonCompleted,
+                        map->CustomData.Get<WorldCredited>(WorldCreditedKey) != nullptr))
         return;
+    map->CustomData.Set(WorldCreditedKey, new WorldCredited());
     uint32 const week = CurrentWeek();
     uint16 const mapId = uint16(map->GetId());
-    uint32 const instanceId = map->GetInstanceId();
-    map->DoForAllPlayers([&](Player* player)
+    uint32 const ref = NextWorldRef();
+    ForEachCredited(map, [&](Player* player)
     {
-        if (player->IsGameMaster())
-            return;
-        // IGNORE: the last boss credited twice for the instance adds nothing
         CharacterDatabase.Execute("INSERT IGNORE INTO mythic_plus_vault_activity (guid, week, `row`, map, difficulty, "
                                   "ref) VALUES ({}, {}, {}, {}, 1, {})",
-                                  player->GetGUID().GetCounter(), week, uint32(VaultRow::World), mapId, instanceId);
+                                  player->GetGUID().GetCounter(), week, uint32(VaultRow::World), mapId, ref);
     });
 }
 

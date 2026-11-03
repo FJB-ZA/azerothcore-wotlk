@@ -216,7 +216,7 @@ void SendKeystone(Player* player);
 void SendCrests(Player* player);
 void SendWeek(Player* player);
 void SendRun(Player* player, MythicRun const& run);
-void SendResult(Player* player, MythicRun const& run, Keystone const& newKey, Crest crest, uint32 crests);
+void SendResult(Player* player, MythicRun const& run, Keystone const& newKey, Crest crest, uint32 crests, bool ownKey);
 void SendValor(Player* player);
 // The Font of Power's keys for the addon's keystone window: a count, then one message per holder
 void SendFontKeys(Player* player, std::vector<Player*> const& holders);

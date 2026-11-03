@@ -76,13 +76,14 @@ inline std::string FormatCrests(CrestWallet const& owned, CrestWallet const& ear
     return text + ' ' + std::to_string(WeeklyCrestCap);
 }
 
-// "E1 <map> <level> <seconds> <upgrade 0-3> <new key map> <new key level> <crest tier> <crests>"
+// "E1 <map> <level> <seconds> <upgrade 0-3> <new key map> <new key level> <crest tier> <crests> <own key 0/1>": the
+// player's keystone after the run, and whether the run's key was theirs (only its owner's keystone moves)
 inline std::string FormatResult(uint32_t map, uint8_t level, uint32_t seconds, uint8_t upgrade, uint32_t keyMap,
-                                uint8_t keyLevel, Crest crest, uint32_t crests)
+                                uint8_t keyLevel, Crest crest, uint32_t crests, bool ownKey)
 {
     return "E1 " + std::to_string(map) + ' ' + std::to_string(level) + ' ' + std::to_string(seconds) + ' ' +
            std::to_string(upgrade) + ' ' + std::to_string(keyMap) + ' ' + std::to_string(keyLevel) + ' ' +
-           std::to_string(uint32_t(crest)) + ' ' + std::to_string(crests);
+           std::to_string(uint32_t(crest)) + ' ' + std::to_string(crests) + ' ' + (ownKey ? '1' : '0');
 }
 
 // "V1 <valorstones> <highest crest tier they buy, 0 none>"

@@ -324,13 +324,14 @@ void Complete(Map* map, MythicRun& run)
         uint32 const crests = AwardCrests(player, crest, CrestsForRun(timed));
         RecordRun(player, mapId, run.level, uint32(run.finalMs / 1000), run.upgrade);
         Keystone key = GetKeystone(player);
-        if (player->GetGUID() == run.keyOwner)
+        bool const ownKey = player->GetGUID() == run.keyOwner;
+        if (ownKey)
             key = timed ? Keystone{RandomDungeon(), NextKeyLevel(run.level, run.upgrade)}
                         : Keystone{mapId, NextKeyLevel(run.level, 0)};
         else if (!key.map)
             key = Keystone{RandomDungeon(), NextKeyLevel(run.level, 0)};
         SetKeystone(player, key.map, key.level);
-        SendResult(player, run, key, crest, crests);
+        SendResult(player, run, key, crest, crests, ownKey);
         // Bots can't click the cache, so they take their roll here and visit the forge once the fight is over
         if (IsBot(player))
         {
