@@ -18,6 +18,7 @@
 #include <vector>
 
 #include "DataMap.h"
+#include "DatabaseEnvFwd.h"
 #include "Define.h"
 #include "MythicAffixPolicy.h"
 #include "MythicCrestPolicy.h"
@@ -25,10 +26,12 @@
 #include "MythicKeystonePolicy.h"
 #include "MythicProtocolPolicy.h"
 #include "MythicValorPolicy.h"
+#include "MythicVaultPolicy.h"
 #include "ObjectGuid.h"
 #include "Position.h"
 
 class Creature;
+class GameObject;
 class Item;
 class Map;
 class Player;
@@ -66,6 +69,9 @@ inline constexpr uint32 SpellExplosion = 990909;
 inline constexpr uint32 SpellQuake = 990910;
 inline constexpr uint32 SpellShadowNova = 990912;
 inline constexpr uint32 SpellEmpowered = 990913;
+
+// How near the Keystone Master the Crest Forge and the Great Vault's choice work
+inline constexpr float ForgeRange = 10.0f;
 
 // How long each ground spell lasts, so the rune casting it outlives it
 inline constexpr uint32 CircleMs = 3500;
@@ -119,6 +125,8 @@ MythicRun* FindRun(Map* map);
 MythicRun* ActiveRun(Map* map);
 // Bot sessions have no client socket, and the core names them "headless"
 bool IsBot(Player* player);
+// Puts the keystone of the group member with that guid low in the Font of Power; returns why it can't, or empty
+std::string ActivateKey(Player* player, GameObject* font, uint32 holderLow);
 bool IsBoss(Creature* creature);
 // Hostile creatures the affixes act on (not pets, triggers, orbs or friendly NPCs), dead or alive
 bool IsEnemyKind(Creature* creature);
@@ -148,6 +156,8 @@ std::vector<Creature*> EnemiesNear(WorldObject* center, float range);
 std::vector<Player*> RunPlayers(Map* map, bool inCombatOnly);
 
 // mythic_storage.cpp
+// The Mythic+ week now (MythicAffixPolicy.h WeekIndex): affixes, crest caps, runs and the vault go by it
+uint32 CurrentWeek();
 Keystone GetKeystone(Player* player);
 // Map 0 takes the keystone away
 void SetKeystone(Player* player, uint16 map, uint8 level);
@@ -155,18 +165,9 @@ CrestWallet Crests(Player* player);
 CrestWallet EarnedThisWeek(Player* player);
 // Adds up to the weekly cap and returns what was added
 uint32 AwardCrests(Player* player, Crest crest, uint32 amount);
-// Pays for raising an item to `rank`; returns the tier paid with, or None
-Crest PayCrests(Player* player, uint8 rank);
+// Pays one rank's crests of `lowest` or a better tier; returns the tier paid with, or None
+Crest PayCrests(Player* player, Crest lowest);
 void RecordRun(Player* player, uint16 map, uint8 level, uint32 seconds, uint8 upgrade);
-struct VaultReward
-{
-    uint32 week = 0;
-    uint8 bestLevel = 0;
-    std::vector<uint16> maps;
-};
-// The newest finished week with runs whose vault is still closed
-std::optional<VaultReward> PendingVault(Player* player);
-void ClaimVault(Player* player, uint32 week);
 uint32 Valorstones(Player* player);
 void AddValorstones(Player* player, uint32 amount);
 // False, and nothing spent, when the player has fewer
@@ -181,16 +182,22 @@ uint8 BestKeyLevel(Player* player);
 bool IsMythicItem(uint32 itemId);
 // A Mythic 0 item from `map`'s chest that `player` can use, or 0
 uint32 RollItem(Player* player, uint16 map);
-uint32 RollItem(Player* player, std::vector<uint16> const& maps);
-// Into the bags, or the mailbox when they're full
+// The same from any of `maps`' chests, at Mythic `rank`
+uint32 RollItemAtRank(Player* player, std::vector<uint16> const& maps, uint8 rank);
+// A Raid 0 item from any of `raids`' loot (mythic_plus_raid_item) that `player` can use, or 0: one of item level
+// `itemLevel` when there is one (MythicVaultPolicy.h RaidRewardPool)
+uint32 RollRaidItem(Player* player, std::vector<RaidLoot> const& raids, uint16 itemLevel);
+// "Mythic 5" or "Raid 2" for a ranked item; empty for any other
+std::string RankName(uint32 itemId);
+// Into the bags, or the mailbox when they're full, saved at once
 void GiveItem(Player* player, uint32 itemId);
-// Raises the item at bag/slot one rank; returns why it didn't, or empty
+// The same, saved in `trans` with whatever else it holds, so a reward and the record of it are written together
+void GiveItem(Player* player, uint32 itemId, CharacterDatabaseTransaction trans);
+// Raises the Mythic+ or raid item at bag/slot one rank; returns why it didn't, or empty
 std::string UpgradeItem(Player* player, uint8 bag, uint8 slot);
 // The item's next rank cost, for the forge's text: empty when it can't go higher
 std::string UpgradeCostText(uint32 itemId);
-// Takes last week's vault item; returns why there is none, or empty
-std::string OpenVault(Player* player);
-// What a bot does at the forge: raises its equipped Mythic+ items, lowest rank first, while its crests pay
+// What a bot does at the forge: raises its equipped Mythic+ and raid items, lowest rank first, while its crests pay
 void SpendCrestsOnGear(Player* player);
 // Adds one prismatic socket to the Mythic+ item at bag/slot for Valorstones; returns why it didn't, or empty
 std::string AddSocket(Player* player, uint8 bag, uint8 slot);
@@ -200,14 +207,35 @@ std::string SocketCostText(Item* item);
 std::string BuyCrests(Player* player, Crest crest);
 
 // mythic_addon.cpp
+// One SoloWowMythic message to the player's addon; bots get none
+void SendToClient(Player* player, std::string const& body);
 void SendKeystone(Player* player);
 void SendCrests(Player* player);
 void SendWeek(Player* player);
 void SendRun(Player* player, MythicRun const& run);
-void SendResult(Player* player, MythicRun const& run, Keystone const& newKey, Crest crest, uint32 crests);
+void SendResult(Player* player, MythicRun const& run, Keystone const& newKey, Crest crest, uint32 crests, bool ownKey);
 void SendValor(Player* player);
+// The Font of Power's keys for the addon's keystone window: a count, then one message per holder
+void SendFontKeys(Player* player, std::vector<Player*> const& holders);
 // This week's runs and the best run per dungeon, for the Mythic+ Dungeons tab
 void SendHistory(Player* player);
+
+// mythic_vault.cpp: the Great Vault (MythicVaultPolicy.h)
+struct VaultOption
+{
+    VaultRow row;
+    uint8 slot;
+    uint32 item;
+};
+// Last week's options, best item level first: rolled once, the first time they're asked for after the reset, and
+// kept; none once one is chosen. `shown` when they are listed for the player to choose from, which ClaimOption
+// checks so a choice from before the reset is refused.
+std::vector<VaultOption> VaultOptions(Player* player, bool shown = false);
+// Gives the option in `row`'s `slot` and closes the week's vault; returns why not, or empty. Bots choose anywhere.
+std::string ClaimOption(Player* player, VaultRow row, uint8 slot);
+// A bot's choice, at login and after a run: the best item level waiting, if any
+void ClaimBestOption(Player* bot);
+// The vault's options and rows for the addon's Great Vault window
 void SendVault(Player* player);
 }
 

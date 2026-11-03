@@ -47,6 +47,7 @@ void AddSC_mythic_affix_sanguine();
 void AddSC_mythic_affix_teeming();
 void AddSC_mythic_affix_volcanic();
 void AddSC_mythic_npc();
+void AddSC_mythic_vault();
 
 // The name of this function should match:
 // void Add${NameOfDirectory}Scripts()
@@ -83,4 +84,5 @@ void AddCustomScripts()
     AddSC_mythic_affix_teeming();
     AddSC_mythic_affix_volcanic();
     AddSC_mythic_npc();
+    AddSC_mythic_vault();
 }

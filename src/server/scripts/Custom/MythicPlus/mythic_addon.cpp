@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "Chat.h"
+#include "GameObject.h"
 #include "GameTime.h"
 #include "MythicPlus.h"
 #include "MythicProtocolPolicy.h"
@@ -21,21 +22,16 @@
 
 // Mythic+ addon messages (MythicProtocolPolicy.h): the keystone, crests, Valorstones, week, run history and vault at
 // login and on request, the run every second inside a run, and the result at the end. The addon's Crest Forge asks
-// for upgrades, sockets and crests the same way.
+// for upgrades, sockets and crests the same way, and its Great Vault for the reward chosen.
 namespace MythicPlus
 {
 namespace
 {
-constexpr float ForgeRange = 10.0f;
+constexpr float FontRange = 10.0f;
 
-void SendToClient(Player* player, std::string const& body)
+GameObject* FindNearestFont(Player* player)
 {
-    if (IsBot(player))
-        return;
-    WorldPacket data;
-    ChatHandler::BuildChatPacket(data, CHAT_MSG_WHISPER, LANG_ADDON, player, player,
-                                 std::string(AddonPrefix) + '\t' + body);
-    player->SendDirectMessage(&data);
+    return player->FindNearestGameObject(FontOfPowerEntry, FontRange);
 }
 
 void SendAll(Player* player)
@@ -49,6 +45,16 @@ void SendAll(Player* player)
     if (MythicRun* run = FindRun(player->GetMap()))
         SendRun(player, *run);
 }
+}
+
+void SendToClient(Player* player, std::string const& body)
+{
+    if (IsBot(player))
+        return;
+    WorldPacket data;
+    ChatHandler::BuildChatPacket(data, CHAT_MSG_WHISPER, LANG_ADDON, player, player,
+                                 std::string(AddonPrefix) + '\t' + body);
+    player->SendDirectMessage(&data);
 }
 
 void SendKeystone(Player* player)
@@ -84,10 +90,10 @@ void SendRun(Player* player, MythicRun const& run)
     SendToClient(player, FormatRun(snapshot));
 }
 
-void SendResult(Player* player, MythicRun const& run, Keystone const& newKey, Crest crest, uint32 crests)
+void SendResult(Player* player, MythicRun const& run, Keystone const& newKey, Crest crest, uint32 crests, bool ownKey)
 {
     SendToClient(player, FormatResult(run.dungeon ? run.dungeon->map : 0, run.level, uint32(run.finalMs / 1000),
-                                      run.upgrade, newKey.map, newKey.level, crest, crests));
+                                      run.upgrade, newKey.map, newKey.level, crest, crests, ownKey));
 }
 
 void SendValor(Player* player)
@@ -107,10 +113,14 @@ void SendHistory(Player* player)
         SendToClient(player, FormatBestRun(run));
 }
 
-void SendVault(Player* player)
+void SendFontKeys(Player* player, std::vector<Player*> const& holders)
 {
-    if (!IsBot(player))
-        SendToClient(player, FormatVault(PendingVault(player).has_value()));
+    SendToClient(player, FormatFontKeys(holders.size()));
+    for (Player* holder : holders)
+    {
+        Keystone const key = GetKeystone(holder);
+        SendToClient(player, FormatFontKey(uint32(holder->GetGUID().GetCounter()), key.map, key.level));
+    }
 }
 }
 
@@ -130,7 +140,8 @@ public:
             SendAll(player);
     }
 
-    // "SoloWowMythic\tQ" asks for everything; U upgrades an item, S sockets it and P buys crests, at the Keystone Master
+    // "SoloWowMythic\tQ" asks for everything; A puts a key in the Font of Power; U upgrades an item, S sockets it,
+    // P buys crests and V takes the Great Vault's reward, at the Keystone Master
     bool OnPlayerCanUseChat(Player* player, uint32 type, uint32 language, std::string& msg, Player* receiver) override
     {
         std::string const prefix = std::string(AddonPrefix) + '\t';
@@ -141,6 +152,22 @@ public:
         if (IsQuery(body))
         {
             SendAll(player);
+            return false;
+        }
+        if (std::optional<uint32> const holder = ParseActivate(body))
+        {
+            GameObject* font = FindNearestFont(player);
+            std::string const reason =
+                font ? ActivateKey(player, font, *holder) : "Stand at the Font of Power to start a keystone.";
+            if (!reason.empty())
+                ChatHandler(player->GetSession()).SendNotification(reason);
+            return false;
+        }
+        // ClaimOption checks the Keystone Master is near
+        if (std::optional<VaultChoice> const choice = ParseVaultChoice(body))
+        {
+            if (std::string const reason = ClaimOption(player, choice->row, choice->slot); !reason.empty())
+                ChatHandler(player->GetSession()).SendNotification(reason);
             return false;
         }
         std::optional<UpgradeRequest> const upgrade = ParseUpgrade(body);

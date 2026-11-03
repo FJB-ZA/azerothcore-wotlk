@@ -82,11 +82,10 @@ constexpr char const* CrestName(Crest crest)
 // Crests owned per tier, index 0 = Cobalt
 using CrestWallet = std::array<uint32_t, CrestTiers>;
 
-// Pays CrestsPerRank for `rank` from the lowest tier that may pay, so better crests are kept for higher ranks.
-// Returns the tier paid with, or None when no allowed tier holds enough.
-constexpr Crest PayForRank(CrestWallet& wallet, uint8_t rank)
+// Pays CrestsPerRank from `lowest` or the first better tier that holds enough, so better crests are kept for higher
+// ranks. Returns the tier paid with, or None when no allowed tier holds enough.
+constexpr Crest PayWithCrest(CrestWallet& wallet, Crest lowest)
 {
-    Crest const lowest = CrestForRank(rank);
     if (lowest == Crest::None)
         return Crest::None;
     for (uint8_t tier = uint8_t(lowest); tier <= CrestTiers; ++tier)
@@ -100,9 +99,20 @@ constexpr Crest PayForRank(CrestWallet& wallet, uint8_t rank)
     return Crest::None;
 }
 
+// The same for a Mythic `rank`, whose lowest tier is CrestForRank's
+constexpr Crest PayForRank(CrestWallet& wallet, uint8_t rank)
+{
+    return PayWithCrest(wallet, CrestForRank(rank));
+}
+
+constexpr bool CanAffordCrest(CrestWallet wallet, Crest lowest)
+{
+    return PayWithCrest(wallet, lowest) != Crest::None;
+}
+
 constexpr bool CanAfford(CrestWallet wallet, uint8_t rank)
 {
-    return PayForRank(wallet, rank) != Crest::None;
+    return CanAffordCrest(wallet, CrestForRank(rank));
 }
 }
 

@@ -95,6 +95,13 @@ constexpr uint8_t ChestItemChancePercent(bool timed)
 {
     return timed ? 60 : 40;
 }
+
+// Starting spends the key, so a player puts in only their own or a bot's (bots can't use the Font); another player's
+// goes in by their own hand
+constexpr bool MayStartKeyOf(bool ownKey, bool holderIsBot)
+{
+    return ownKey || holderIsBot;
+}
 }
 
 #endif

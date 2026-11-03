@@ -55,11 +55,6 @@ bool Beats(RunRecord const& run, RunRecord const& best)
     return run.level > best.level || (run.level == best.level && run.seconds < best.seconds);
 }
 
-uint32 CurrentWeek()
-{
-    return WeekIndex(uint64(GameTime::GetGameTime().count()));
-}
-
 void Load(Player* player, PlayerMythicData* data)
 {
     uint32 const guid = player->GetGUID().GetCounter();
@@ -146,6 +141,11 @@ void SyncKeystoneItem(Player* player, Keystone const& key)
 }
 }
 
+uint32 CurrentWeek()
+{
+    return WeekIndex(uint64(GameTime::GetGameTime().count()));
+}
+
 Keystone GetKeystone(Player* player)
 {
     return DataOf(player)->key;
@@ -196,11 +196,11 @@ uint32 AwardCrests(Player* player, Crest crest, uint32 amount)
     return added;
 }
 
-Crest PayCrests(Player* player, uint8 rank)
+Crest PayCrests(Player* player, Crest lowest)
 {
     PlayerMythicData* data = DataOf(player);
     CrestWallet wallet = data->owned;
-    Crest const paid = PayForRank(wallet, rank);
+    Crest const paid = PayWithCrest(wallet, lowest);
     if (paid == Crest::None)
         return paid;
     data->owned = wallet;
@@ -242,38 +242,6 @@ void RecordRun(Player* player, uint16 map, uint8 level, uint32 seconds, uint8 up
         "level = GREATEST(level, VALUES(level))",
         guid, map, level, seconds, upgrade, now);
     SendHistory(player);
-}
-
-std::optional<VaultReward> PendingVault(Player* player)
-{
-    uint32 const week = CurrentWeek();
-    if (!week)
-        return std::nullopt;
-    uint32 const guid = player->GetGUID().GetCounter();
-    // Like Legion's, the vault holds last week's best and is gone once a newer week ends
-    QueryResult result = CharacterDatabase.Query(
-        "SELECT best_level FROM mythic_plus_week WHERE guid = {} AND week = {} AND runs > 0 AND vault_claimed = 0",
-        guid, week - 1);
-    if (!result)
-        return std::nullopt;
-    VaultReward reward;
-    reward.week = week - 1;
-    reward.bestLevel = result->Fetch()[0].Get<uint8>();
-    if (QueryResult maps = CharacterDatabase.Query(
-            "SELECT map FROM mythic_plus_week_maps WHERE guid = {} AND week = {}", guid, week - 1))
-    {
-        do
-            reward.maps.push_back(maps->Fetch()[0].Get<uint16>());
-        while (maps->NextRow());
-    }
-    return reward;
-}
-
-void ClaimVault(Player* player, uint32 week)
-{
-    CharacterDatabase.Execute("UPDATE mythic_plus_week SET vault_claimed = 1 WHERE guid = {} AND week = {}",
-                              player->GetGUID().GetCounter(), week);
-    SendVault(player);
 }
 
 uint32 Valorstones(Player* player)
@@ -346,6 +314,7 @@ public:
     }
 
     // Loads the data here on the world thread, so runs on map threads never query; a bot does its Dalaran errands
+    // from wherever it logs in: it can't walk to the Great Vault, so it takes the best option there
     void OnPlayerLogin(Player* player) override
     {
         SyncKeystoneItem(player, GetKeystone(player));
@@ -353,7 +322,7 @@ public:
             return;
         if (player->GetLevel() >= HeroicLevel && !GetKeystone(player).map)
             SetKeystone(player, Dungeons[urand(0, uint32(Dungeons.size() - 1))].map, MinKeyLevel);
-        OpenVault(player);
+        ClaimBestOption(player);
         SpendCrestsOnGear(player);
     }
 

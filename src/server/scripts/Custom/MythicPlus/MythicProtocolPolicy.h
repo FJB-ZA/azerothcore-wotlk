@@ -20,6 +20,7 @@
 #include "MythicAffixPolicy.h"
 #include "MythicCrestPolicy.h"
 #include "MythicKeystonePolicy.h"
+#include "MythicVaultPolicy.h"
 
 // Mythic+ addon messages (solo-wow): hidden whispers from the player to themself with this prefix, read by the
 // MythicPlus addon. Numbers only, space separated, so any client locale reads them.
@@ -75,13 +76,14 @@ inline std::string FormatCrests(CrestWallet const& owned, CrestWallet const& ear
     return text + ' ' + std::to_string(WeeklyCrestCap);
 }
 
-// "E1 <map> <level> <seconds> <upgrade 0-3> <new key map> <new key level> <crest tier> <crests>"
+// "E1 <map> <level> <seconds> <upgrade 0-3> <new key map> <new key level> <crest tier> <crests> <own key 0/1>": the
+// player's keystone after the run, and whether the run's key was theirs (only its owner's keystone moves)
 inline std::string FormatResult(uint32_t map, uint8_t level, uint32_t seconds, uint8_t upgrade, uint32_t keyMap,
-                                uint8_t keyLevel, Crest crest, uint32_t crests)
+                                uint8_t keyLevel, Crest crest, uint32_t crests, bool ownKey)
 {
     return "E1 " + std::to_string(map) + ' ' + std::to_string(level) + ' ' + std::to_string(seconds) + ' ' +
            std::to_string(upgrade) + ' ' + std::to_string(keyMap) + ' ' + std::to_string(keyLevel) + ' ' +
-           std::to_string(uint32_t(crest)) + ' ' + std::to_string(crests);
+           std::to_string(uint32_t(crest)) + ' ' + std::to_string(crests) + ' ' + (ownKey ? '1' : '0');
 }
 
 // "V1 <valorstones> <highest crest tier they buy, 0 none>"
@@ -122,10 +124,35 @@ inline std::string FormatBestRun(RunRecord const& run)
     return "B1 " + RunFields(run);
 }
 
-// "G1 <1 when last week's vault waits at the Keystone Master>"
+// The Great Vault: "G1 <1 when last week's options wait at the Keystone Master>" comes first, then one
+// "G3 <row> <slot> <item>" per option waiting, then nine "G2 <row> <slot> <progress> <threshold> <item level or 0>",
+// the week the options came from while they wait and this week's progress after
 inline std::string FormatVault(bool ready)
 {
     return ready ? "G1 1" : "G1 0";
+}
+
+inline std::string FormatVaultSlot(VaultRow row, uint8_t slot, uint32_t progress, uint32_t threshold,
+                                   uint32_t itemLevel)
+{
+    return "G2 " + std::to_string(uint32_t(row)) + ' ' + std::to_string(slot) + ' ' + std::to_string(progress) + ' ' +
+           std::to_string(threshold) + ' ' + std::to_string(itemLevel);
+}
+
+inline std::string FormatVaultOption(VaultRow row, uint8_t slot, uint32_t itemId)
+{
+    return "G3 " + std::to_string(uint32_t(row)) + ' ' + std::to_string(slot) + ' ' + std::to_string(itemId);
+}
+
+// "F1 <count>" starts the Font of Power's key list, then one "F2 <holder guid low> <map> <level>" per key holder
+inline std::string FormatFontKeys(std::size_t count)
+{
+    return "F1 " + std::to_string(count);
+}
+
+inline std::string FormatFontKey(uint32_t holderLow, uint32_t map, uint8_t level)
+{
+    return "F2 " + std::to_string(holderLow) + ' ' + std::to_string(map) + ' ' + std::to_string(level);
 }
 
 // Client to server: "Q" asks for everything again
@@ -176,6 +203,14 @@ inline std::optional<UpgradeRequest> ParseItemRequest(std::string_view body, cha
     return UpgradeRequest{uint8_t(*bag), uint8_t(*slot)};
 }
 
+// "A <holder guid low>" puts that holder's keystone in the Font of Power
+inline std::optional<uint32_t> ParseActivate(std::string_view body)
+{
+    if (body.size() < 3 || body.substr(0, 2) != "A ")
+        return std::nullopt;
+    return ParseNumber(body.substr(2));
+}
+
 // "U <bag> <slot>" raises the item one rank
 inline std::optional<UpgradeRequest> ParseUpgrade(std::string_view body)
 {
@@ -186,6 +221,21 @@ inline std::optional<UpgradeRequest> ParseUpgrade(std::string_view body)
 inline std::optional<UpgradeRequest> ParseSocket(std::string_view body)
 {
     return ParseItemRequest(body, 'S');
+}
+
+struct VaultChoice
+{
+    VaultRow row;
+    uint8_t slot;
+};
+
+// "V <row 1-3> <slot 1-3>" takes the Great Vault's option in that slot
+inline std::optional<VaultChoice> ParseVaultChoice(std::string_view body)
+{
+    std::optional<UpgradeRequest> const pair = ParseItemRequest(body, 'V');
+    if (!pair || pair->bag < 1 || pair->bag > VaultRows || pair->slot < 1 || pair->slot > VaultSlots)
+        return std::nullopt;
+    return VaultChoice{VaultRow(pair->bag), pair->slot};
 }
 }
 

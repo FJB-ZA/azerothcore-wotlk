@@ -153,7 +153,8 @@ bool HoldsKeyFor(Player* holder, Map* map)
     return GetKeystone(holder).map == map->GetId();
 }
 
-// Whose keys `player` may put in: their own, and those of their group's bots in the dungeon, who can't use the Font
+// The keys in the dungeon `player` can see in the Font: their own and their group's. They start their own and bots'
+// (who can't use the Font); another player's holder is asked to (MayStartKeyOf)
 std::vector<Player*> KeyHolders(Player* player, Map* map)
 {
     std::vector<Player*> holders;
@@ -165,7 +166,7 @@ std::vector<Player*> KeyHolders(Player* player, Map* map)
     for (GroupReference* itr = group->GetFirstMember(); itr; itr = itr->next())
     {
         Player* member = itr->GetSource();
-        if (member && member->GetMap() == map && IsBot(member) && HoldsKeyFor(member, map))
+        if (member && member->GetMap() == map && member != player && HoldsKeyFor(member, map))
             holders.push_back(member);
     }
     return holders;
@@ -176,16 +177,20 @@ std::string NoKeyReason(Player* player)
     Keystone const key = GetKeystone(player);
     if (!key.map)
         return "No one here holds a keystone. The Keystone Master in Dalaran gives you one.";
-    return "Your keystone is for " + KeyName(key) + ", and no bot in your group holds one for this dungeon.";
+    return "Your keystone is for " + KeyName(key) + ", and no one else in your group holds one for this dungeon.";
 }
 
-// Completion runs inside Unit::Kill, so swapping gear waits; the event dies with the bot if it logs out first
+// Completion runs inside Unit::Kill, so swapping gear waits; the event dies with the bot if it logs out first. A bot
+// that stays logged in past the weekly reset takes its vault reward here too.
 void ScheduleBotForge(Player* bot, uint8 triesLeft)
 {
     bot->m_Events.AddEventAtOffset([bot, triesLeft]
     {
         if (!bot->IsInCombat())
+        {
+            ClaimBestOption(bot);
             SpendCrestsOnGear(bot);
+        }
         else if (triesLeft)
             ScheduleBotForge(bot, uint8(triesLeft - 1));
     }, BotForgeDelay);
@@ -208,9 +213,12 @@ std::string RollCache(Player* player, MythicRun& run, uint16 map)
     return {};
 }
 
-// `player` is whose key goes in, a bot when the group leader puts in a bot's key
-void Start(Player* player, Map* map, Keystone const& key)
+// `player` is whose key goes in, a bot's when a group member puts it in, and `starter` who put it in
+void Start(Player* player, Map* map, Keystone const& key, Player* starter = nullptr)
 {
+    std::string const who = !starter || starter == player
+                                ? player->GetName() + " starts "
+                                : starter->GetName() + " starts " + player->GetName() + "'s ";
     MythicRun* run = map->CustomData.GetDefault<MythicRun>(RunKey);
     run->dungeon = FindDungeon(map->GetId());
     run->level = ClampLevel(key.level);
@@ -226,7 +234,7 @@ void Start(Player* player, Map* map, Keystone const& key)
     // The key depletes now and comes back upgraded only if the run is timed
     SetKeystone(player, key.map, NextKeyLevel(key.level, 0));
     ScaleMap(map, *run);
-    Announce(map, player->GetName() + " starts " + KeyName(key) + " (" + AffixLine(*run) + "). The timer starts in " +
+    Announce(map, who + KeyName(key) + " (" + AffixLine(*run) + "). The timer starts in " +
                       std::to_string(CountdownMs / 1000) + " seconds.", true);
 }
 
@@ -323,13 +331,14 @@ void Complete(Map* map, MythicRun& run)
         uint32 const crests = AwardCrests(player, crest, CrestsForRun(timed));
         RecordRun(player, mapId, run.level, uint32(run.finalMs / 1000), run.upgrade);
         Keystone key = GetKeystone(player);
-        if (player->GetGUID() == run.keyOwner)
+        bool const ownKey = player->GetGUID() == run.keyOwner;
+        if (ownKey)
             key = timed ? Keystone{RandomDungeon(), NextKeyLevel(run.level, run.upgrade)}
                         : Keystone{mapId, NextKeyLevel(run.level, 0)};
         else if (!key.map)
             key = Keystone{RandomDungeon(), NextKeyLevel(run.level, 0)};
         SetKeystone(player, key.map, key.level);
-        SendResult(player, run, key, crest, crests);
+        SendResult(player, run, key, crest, crests, ownKey);
         // Bots can't click the cache, so they take their roll here and visit the forge once the fight is over
         if (IsBot(player))
         {
@@ -369,6 +378,32 @@ MythicRun* ActiveRun(Map* map)
 bool IsBot(Player* player)
 {
     return player->GetSession()->GetRemoteAddress() == "headless";
+}
+
+std::string ActivateKey(Player* player, GameObject* font, uint32 holderLow)
+{
+    // The gossip needs a living player, and so does the addon's message
+    if (!player->IsAlive())
+        return "You can't do that while dead.";
+    Map* map = font->GetMap();
+    if (std::string const reason = FontRefusal(map); !reason.empty())
+        return reason;
+    // The holder may have left or lost the key since the list was shown, so check again
+    for (Player* holder : KeyHolders(player, map))
+    {
+        if (holder->GetGUID().GetCounter() != holderLow)
+            continue;
+        if (!MayStartKeyOf(holder == player, IsBot(holder)))
+        {
+            ChatHandler(holder->GetSession())
+                .SendNotification(player->GetName() + " asks you to put your keystone in the Font of Power.");
+            return "Only " + holder->GetName() + " can put their keystone in. They've been asked to.";
+        }
+        Start(holder, map, GetKeystone(holder), player);
+        return {};
+    }
+    // Someone held it when the list was shown; with no key left in the group, say why instead
+    return KeyHolders(player, map).empty() ? NoKeyReason(player) : "That keystone is no longer in your group.";
 }
 
 bool IsBoss(Creature* creature)
@@ -432,6 +467,8 @@ public:
             handler.SendNotification(NoKeyReason(player));
             return true;
         }
+        // The addon turns this into its keystone window; without it the menu below is the fallback
+        SendFontKeys(player, holders);
         MythicRun preview;
         preview.affixes = AffixesForWeek(WeekIndex(uint64(GameTime::GetGameTime().count())));
         for (Player* holder : holders)
@@ -454,21 +491,8 @@ public:
         CloseGossipMenuFor(player);
         if (sender != FontSender)
             return true;
-        Map* map = go->GetMap();
-        if (std::string const reason = FontRefusal(map); !reason.empty())
-        {
+        if (std::string const reason = ActivateKey(player, go, action); !reason.empty())
             ChatHandler(player->GetSession()).SendNotification(reason);
-            return true;
-        }
-        for (Player* holder : KeyHolders(player, map))
-        {
-            if (holder->GetGUID().GetCounter() == action)
-            {
-                Start(holder, map, GetKeystone(holder));
-                return true;
-            }
-        }
-        ChatHandler(player->GetSession()).SendNotification(NoKeyReason(player));
         return true;
     }
 };
