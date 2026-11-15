@@ -70,6 +70,9 @@ CREATE TEMPORARY TABLE `ranger_credit` AS SELECT * FROM `creature_template` WHER
 UPDATE `ranger_credit` SET `entry` = 990575, `name` = 'Beast hunted alone', `subname` = '', `ScriptName` = '';
 INSERT INTO `creature_template` SELECT * FROM `ranger_credit`;
 DROP TEMPORARY TABLE `ranger_credit`;
+DELETE FROM `creature_template_model` WHERE `CreatureID` = 990575;
+INSERT INTO `creature_template_model` (`CreatureID`, `Idx`, `CreatureDisplayID`, `DisplayScale`, `Probability`) VALUES
+(990575, 0, 10045, 1, 1);  -- entry 1's model: a credit creature is never seen, but every creature needs one
 
 DELETE FROM `quest_template` WHERE `ID` IN (990570, 990571);
 DROP TEMPORARY TABLE IF EXISTS `ranger_quest`;
