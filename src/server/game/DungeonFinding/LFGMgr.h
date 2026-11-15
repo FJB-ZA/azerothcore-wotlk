@@ -581,6 +581,10 @@ namespace lfg
         static uint8 CheckGroupRoles(LfgRolesMap& groles);
         /// Checks if given players are ignoring each other
         static bool HasIgnore(ObjectGuid guid1, ObjectGuid guid2);
+        /// solo-wow: a check beside the ignore lists that keeps two characters out of one group (mod-playerbots keeps a
+        /// bot out of the groups of players who chose to avoid it). Called from the queue update only.
+        typedef bool (*AvoidCheck)(ObjectGuid guid1, ObjectGuid guid2);
+        static void SetAvoidCheck(AvoidCheck check);
         /// Sends queue status to player
         static void SendLfgQueueStatus(ObjectGuid guid, LfgQueueStatusData const& data);
         // debug lfg command
