@@ -29,6 +29,7 @@ void AddSC_subclass_minions();
 void AddSC_subclass_npc();
 void AddSC_gladiator_spells();
 void AddSC_necromancer_quests();
+void AddSC_ranger_quests();
 void AddSC_nameplate_test();
 void AddSC_mythic_storage();
 void AddSC_mythic_items();
@@ -66,6 +67,7 @@ void AddCustomScripts()
     AddSC_subclass_npc();
     AddSC_gladiator_spells();
     AddSC_necromancer_quests();
+    AddSC_ranger_quests();
     AddSC_nameplate_test();
     AddSC_mythic_storage();
     AddSC_mythic_items();

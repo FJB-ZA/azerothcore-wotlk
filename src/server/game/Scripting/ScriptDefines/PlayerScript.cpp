@@ -1009,6 +1009,11 @@ void ScriptMgr::OnPlayerResolveTrainerSpell(Player const* player, uint32 trainer
     CALL_ENABLED_HOOKS(PlayerScript, PLAYERHOOK_ON_RESOLVE_TRAINER_SPELL, script->OnPlayerResolveTrainerSpell(player, trainerId, spellId));
 }
 
+bool ScriptMgr::OnPlayerCanLoadPet(Player* player, PetType petType)
+{
+    CALL_ENABLED_BOOLEAN_HOOKS(PlayerScript, PLAYERHOOK_CAN_LOAD_PET, !script->OnPlayerCanLoadPet(player, petType));
+}
+
 void ScriptMgr::OnPlayerAfterTrainSpell(Player* player, Creature* trainer, uint32 spellId)
 {
     CALL_ENABLED_HOOKS(PlayerScript, PLAYERHOOK_ON_AFTER_TRAIN_SPELL, script->OnPlayerAfterTrainSpell(player, trainer, spellId));

@@ -42,6 +42,9 @@ struct Path
     uint8 role = 0;          // what the path's tree plays as for the core's role helpers: TalentTabRole, 0 for none
     Modifiers modifiers;
     std::vector<SpellSwap> swaps;  // highest rank first, because removing a rank also removes the ranks above it
+    std::vector<uint32> removes;   // spells the path takes away with nothing in their place (subclass_spell_remove)
+    std::vector<uint32> grants;    // spells only the path has (subclass_spell_grant)
+    bool pets = true;              // false: the class's pets stay in the stable while a slot follows the path
 };
 
 struct CreatureSwap
@@ -57,6 +60,9 @@ Path const* ActivePath(Player const* player);
 
 // The active path's replacement for an original spell, or 0
 uint32 ActiveReplacement(Player const* player, uint32 originalSpellId);
+
+// True when the active path takes `spellId` away (a trainer neither lists nor teaches it)
+bool ActiveRemoves(Player const* player, uint32 spellId);
 
 // The original spell an active-path replacement stands for, or 0
 uint32 ActiveOriginal(Player const* player, uint32 replacementSpellId);

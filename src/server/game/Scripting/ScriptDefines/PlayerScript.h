@@ -237,6 +237,7 @@ enum PlayerHook
     PLAYERHOOK_ON_GET_TRAINER_SPELL_STATE,
     PLAYERHOOK_ON_AFTER_TRAIN_SPELL,
     PLAYERHOOK_ON_RESOLVE_TRAINER_SPELL,
+    PLAYERHOOK_CAN_LOAD_PET,
     PLAYERHOOK_END
 };
 
@@ -964,6 +965,12 @@ public:
      * @brief Maps the spell id a client asked a trainer to teach to the trainer spell it stands for, when a script displayed another id in its place.
      */
     virtual void OnPlayerResolveTrainerSpell(Player const* /*player*/, uint32 /*trainerId*/, uint32& /*spellId*/) {}
+
+    /**
+     * @brief Called before a pet is loaded from the database and summoned (Call Pet, Revive Pet, the stable, login,
+     *        dismounting). Return false to keep it unsummoned; it stays in the stable as it was.
+     */
+    [[nodiscard]] virtual bool OnPlayerCanLoadPet(Player* /*player*/, PetType /*petType*/) { return true; }
 
     /**
      * @brief This hook is called after a trainer purchase went through, once the money has been

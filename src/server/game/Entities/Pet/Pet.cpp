@@ -240,6 +240,13 @@ bool Pet::LoadPetFromDB(Player* owner, uint32 petEntry, uint32 petnumber, bool c
     bool forceLoadFromDB = false;
     sScriptMgr->OnPlayerBeforeLoadPetFromDB(owner, petEntry, petnumber, current, forceLoadFromDB);
 
+    // A script may keep the pet in the stable (solo-wow: a sub-class path without pets)
+    if (!sScriptMgr->OnPlayerCanLoadPet(owner, petInfo->Type))
+    {
+        m_loading = false;
+        return false;
+    }
+
     if (!forceLoadFromDB && (owner->IsClass(CLASS_DEATH_KNIGHT, CLASS_CONTEXT_PET) && !owner->CanSeeDKPet())) // DK Pet exception
         return false;
 

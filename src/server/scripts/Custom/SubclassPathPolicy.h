@@ -136,6 +136,28 @@ constexpr SpellMove TalentMove(bool slotOnRowPath, bool hasOriginal, bool hasTal
     return originalTaken && !talentInEffect ? SpellMove::GiveOriginal : SpellMove::None;
 }
 
+// A spell the path takes away with nothing in its place (subclass_spell_remove: the Ranger's pet spells). It leaves
+// the slot while the slot follows the path, and comes back off the path, but only if the path took it.
+constexpr SpellMove RemoveMove(bool slotOnRowPath, bool hasOriginal, bool originalTaken)
+{
+    return TalentMove(slotOnRowPath, hasOriginal, true, originalTaken);
+}
+
+// A spell the path gives with nothing taken for it (subclass_spell_grant: Ranger's Focus). The slot has it exactly
+// while it follows the path: ToReplacement gives it, ToOriginal takes it back.
+constexpr SpellMove GrantMove(bool slotOnRowPath, bool hasSpell)
+{
+    if (slotOnRowPath)
+        return hasSpell ? SpellMove::None : SpellMove::ToReplacement;
+    return hasSpell ? SpellMove::ToOriginal : SpellMove::None;
+}
+
+// A path without pets (subclass_path.pets = 0) keeps the class's pets in the stable while the active slot follows it
+constexpr bool PetAllowed(bool onPath, bool pathHasPets)
+{
+    return !onPath || pathHasPets;
+}
+
 // A path's own tree (subclass_path.talent_tab) opens only while the active slot follows it; class trees have owner 0.
 constexpr bool TreeOpen(uint16_t treeOwner, uint16_t activePath)
 {

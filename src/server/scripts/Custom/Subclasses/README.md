@@ -4,6 +4,7 @@
 |---|---|---|---|
 | 1 Gladiator | Warrior | `Gladiator/` | 990100-990299, talent tab 990 |
 | 2 Necromancer | Warlock | `Necromancer/` | 990300-990499 in every table (spells, creatures, NPCs, quests, items, texts) |
+| 3 Ranger | Hunter | `Ranger/` | 990500-990699 in every table; no pet (`subclass_path.pets` = 0) |
 
 Each path has its own folder here, and its world SQL is in `data/sql/custom/db_world/subclasses/`. The shared code
 that runs every path (`subclass_paths.cpp`, `SubclassPaths.h` and the rest) is one folder up, in `Custom/`.
@@ -13,7 +14,10 @@ that runs every path (`subclass_paths.cpp`, `SubclassPaths.h` and the rest) is o
 1. `data/sql/custom/db_world/subclasses/<date>_<path>_path.sql`: the `subclass_path` row (with `talent_tab` for its
    fourth tree and `bot_share` for bots), its `subclass_spell_swap` rows, and the `spell_proc`, `spell_bonus_data`
    and `spell_script_names` rows its spells need. A swap whose replacement is a talent in the path's tree (Gladiator
-   Stance for Battle Stance) takes the original away only once the slot has learned that talent.
+   Stance for Battle Stance) takes the original away only once the slot has learned that talent. A spell the path
+   takes away with nothing in its place goes in `subclass_spell_remove` (the Ranger's pet spells), one it gives on
+   top of the class's in `subclass_spell_grant` (Ranger's Focus), and `subclass_path.pets` = 0 keeps the class's
+   pets in the stable while a slot follows the path.
 2. `<Path>/<path>_spells.cpp`: spell scripts the data can't express, with an `AddSC_<path>_spells()` that
    `custom_script_loader.cpp` calls. Leave it out if the path needs none.
 3. In solo-wow, the spells and the talent tree go in `patches/client/spell-data/subclasses/<path>.json`.

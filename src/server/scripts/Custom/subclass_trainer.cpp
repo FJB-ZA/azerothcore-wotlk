@@ -92,7 +92,14 @@ public:
     // The default state only knows originals, so a slot holding replacements would see ranks as unlearned or locked.
     void OnPlayerGetTrainerSpellState(Player const* player, uint32 trainerId, uint32 spellId, Trainer::SpellState& state) override
     {
-        if (state == Trainer::SpellState::Known || !SubclassPaths::ActivePath(player))
+        if (!SubclassPaths::ActivePath(player))
+            return;
+        if (SubclassPaths::ActiveRemoves(player, spellId))
+        {
+            state = Trainer::SpellState::Unavailable;  // the path took it away: not taught, even if listed
+            return;
+        }
+        if (state == Trainer::SpellState::Known)
             return;
         Trainer::Trainer const* trainer = sObjectMgr->GetTrainer(trainerId);
         if (Trainer::Spell const* trainerSpell = trainer ? trainer->GetSpell(spellId) : nullptr)
@@ -103,6 +110,9 @@ public:
     {
         if (!SubclassPaths::ActivePath(player))
             return;
+        // Spells the path takes away aren't listed at all
+        std::erase_if(trainerList.Spells, [player](WorldPackets::NPC::TrainerListSpell const& spell)
+                      { return SubclassPaths::ActiveRemoves(player, uint32(spell.SpellID)); });
         for (WorldPackets::NPC::TrainerListSpell& spell : trainerList.Spells)
         {
             spell.SpellID = int32(Shown(player, uint32(spell.SpellID)));

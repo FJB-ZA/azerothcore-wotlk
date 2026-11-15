@@ -185,32 +185,47 @@ void Reconcile(Player* player)
     uint16 const current = data->group[group];
     uint8 const mask = SubclassPaths::SlotMask(group);
 
+    std::unordered_set<uint32>& taken = data->taken[group];
+    uint32 const guid = player->GetGUID().GetCounter();
+    // A spell the path takes out of the slot (for a talent of its tree, or for nothing) and owes back off the path
+    auto take = [&](uint32 spellId, SubclassPaths::SpellMove move)
+    {
+        if (move == SubclassPaths::SpellMove::DropOriginal)
+        {
+            player->removeSpell(spellId, mask, false);
+            taken.insert(spellId);
+            // Written at once, so a quick relog can't lose what the slot is owed back
+            CharacterDatabase.DirectExecute("INSERT IGNORE INTO character_subclass_taken (guid, talent_group, spell) "
+                                            "VALUES ({}, {}, {})", guid, group, spellId);
+        }
+        else if (move == SubclassPaths::SpellMove::GiveOriginal)
+        {
+            GiveSpell(player, spellId, mask);
+            taken.erase(spellId);
+            CharacterDatabase.DirectExecute("DELETE FROM character_subclass_taken WHERE guid = {} AND talent_group = {} "
+                                            "AND spell = {}", guid, group, spellId);
+        }
+    };
+
     auto apply = [&](Path const& path, bool onPath)
     {
+        for (uint32 spellId : path.removes)
+            take(spellId, SubclassPaths::RemoveMove(onPath, HasInSlot(player, spellId, group), taken.count(spellId) != 0));
+        for (uint32 spellId : path.grants)
+        {
+            SubclassPaths::SpellMove const move = SubclassPaths::GrantMove(onPath, HasInSlot(player, spellId, group));
+            if (move == SubclassPaths::SpellMove::ToReplacement)
+                GiveSpell(player, spellId, mask);
+            else if (move == SubclassPaths::SpellMove::ToOriginal)
+                player->removeSpell(spellId, mask, false);
+        }
         for (SubclassPaths::SpellSwap const& swap : path.swaps)
         {
             bool const hasOriginal = HasInSlot(player, swap.original, group);
             if (swap.talent)
             {
-                std::unordered_set<uint32>& taken = data->taken[group];
-                SubclassPaths::SpellMove const move = SubclassPaths::TalentMove(
-                    onPath, hasOriginal, player->HasTalent(swap.replacement, group), taken.count(swap.original) != 0);
-                uint32 const guid = player->GetGUID().GetCounter();
-                if (move == SubclassPaths::SpellMove::DropOriginal)
-                {
-                    player->removeSpell(swap.original, mask, false);
-                    taken.insert(swap.original);
-                    // Written at once, so a quick relog can't lose what the slot is owed back
-                    CharacterDatabase.DirectExecute("INSERT IGNORE INTO character_subclass_taken (guid, talent_group, spell) "
-                                                    "VALUES ({}, {}, {})", guid, group, swap.original);
-                }
-                else if (move == SubclassPaths::SpellMove::GiveOriginal)
-                {
-                    GiveSpell(player, swap.original, mask);
-                    taken.erase(swap.original);
-                    CharacterDatabase.DirectExecute("DELETE FROM character_subclass_taken WHERE guid = {} AND talent_group = {} "
-                                                    "AND spell = {}", guid, group, swap.original);
-                }
+                take(swap.original, SubclassPaths::TalentMove(onPath, hasOriginal, player->HasTalent(swap.replacement, group),
+                                                              taken.count(swap.original) != 0));
                 continue;
             }
             bool const hasReplacement = HasInSlot(player, swap.replacement, group);
@@ -233,8 +248,14 @@ void Reconcile(Player* player)
     for (auto const& [id, path] : paths)
         if (id != current && path.rules.classId == player->getClass())
             apply(path, false);
-    if (Path const* path = FindPath(current))
+    Path const* path = FindPath(current);
+    if (path)
         apply(*path, true);
+
+    // A path without pets: whatever pet is out goes back to the stable, where it waits for the plain class
+    if (Pet* pet = player->GetPet(); pet && pet->getPetType() == HUNTER_PET &&
+                                     !SubclassPaths::PetAllowed(path != nullptr, !path || path->pets))
+        player->RemovePet(pet, PET_SAVE_NOT_IN_SLOT);
 
     for (auto const& [tab, owner] : treeOwners)
     {
@@ -450,7 +471,7 @@ void LoadPathRows()
 {
     QueryResult result = WorldDatabase.Query(
         "SELECT id, name, class, unlock_level, era, damage_pve, damage_pvp, healing_pve, healing_pvp, unlock_quest, "
-        "talent_tab, bot_share, `role` FROM subclass_path");
+        "talent_tab, bot_share, `role`, pets FROM subclass_path");
     if (!result)
         return;
     do
@@ -480,6 +501,7 @@ void LoadPathRows()
         }
         if (path.talentTab)
             SetTalentTabRole(path.talentTab, TalentTabRole(path.role));
+        path.pets = fields[13].Get<uint8>() != 0;
         affectsCombat |= !path.modifiers.Neutral();
     } while (result->NextRow());
 }
@@ -540,6 +562,47 @@ uint32 LoadSpellSwaps()
     return count;
 }
 
+// subclass_spell_remove and subclass_spell_grant: spells a path takes away with nothing in their place, and spells
+// only the path has. Neither may be a talent, or a spell another row already moves.
+uint32 LoadSpellList(char const* table, bool remove)
+{
+    uint32 count = 0;
+    QueryResult result = WorldDatabase.Query("SELECT path_id, spell FROM {}", table);
+    if (!result)
+        return count;
+    do
+    {
+        Field* fields = result->Fetch();
+        uint16 const pathId = fields[0].Get<uint16>();
+        uint32 const spellId = fields[1].Get<uint32>();
+        auto const path = paths.find(pathId);
+        if (path == paths.end() || !sSpellMgr->GetSpellInfo(spellId))
+        {
+            LOG_ERROR("sql.sql", "{}: path {} lists spell {}, but the path or the spell is missing; skipped.", table,
+                      pathId, spellId);
+            continue;
+        }
+        if (GetTalentSpellPos(spellId) || swappedOriginals.count(spellId) || bonusSchoolSpells.count(spellId))
+        {
+            LOG_ERROR("sql.sql", "{}: path {} lists spell {}, a talent or a spell another row already moves; skipped.",
+                      table, pathId, spellId);
+            continue;
+        }
+        (remove ? path->second.removes : path->second.grants).push_back(spellId);
+        swappedOriginals.insert(spellId);
+        ++count;
+    } while (result->NextRow());
+    // Removing a rank also removes the ranks above it, so every higher rank needs its own row
+    if (remove)
+        for (auto const& [id, path] : paths)
+            for (uint32 spellId : path.removes)
+                if (uint32 const next = sSpellMgr->GetNextSpellInChain(spellId))
+                    if (std::find(path.removes.begin(), path.removes.end(), next) == path.removes.end())
+                        LOG_ERROR("sql.sql", "{}: path {} takes away {} but not its next rank {}.", table, id, spellId,
+                                  next);
+    return count;
+}
+
 void LoadCreatureSwaps()
 {
     QueryResult result = WorldDatabase.Query("SELECT path_id, entry, replacement, bodies FROM subclass_creature_swap");
@@ -580,9 +643,12 @@ void LoadPaths()
 
     LoadPathRows();
     uint32 const spellSwaps = LoadSpellSwaps();
+    uint32 const removes = LoadSpellList("subclass_spell_remove", true);
+    uint32 const grants = LoadSpellList("subclass_spell_grant", false);
     LoadCreatureSwaps();
-    LOG_INFO("server.loading", ">> Loaded {} sub-class paths with {} spell swaps and {} creature swaps", paths.size(),
-             spellSwaps, creatureSwaps.size());
+    LOG_INFO("server.loading",
+             ">> Loaded {} sub-class paths with {} spell swaps, {} spells taken away, {} given and {} creature swaps",
+             paths.size(), spellSwaps, removes, grants, creatureSwaps.size());
 }
 }  // namespace
 
@@ -601,6 +667,12 @@ uint32 ActiveReplacement(Player const* player, uint32 originalSpellId)
             if (swap.original == originalSpellId)
                 return swap.replacement;
     return 0;
+}
+
+bool ActiveRemoves(Player const* player, uint32 spellId)
+{
+    Path const* path = ActivePath(player);
+    return path && std::find(path->removes.begin(), path->removes.end(), spellId) != path->removes.end();
 }
 
 uint32 ActiveOriginal(Player const* player, uint32 replacementSpellId)
@@ -666,8 +738,16 @@ public:
                        {PLAYERHOOK_ON_LOGIN, PLAYERHOOK_ON_LEARN_SPELL, PLAYERHOOK_ON_AFTER_TRAIN_SPELL,
                         PLAYERHOOK_ON_LEVEL_CHANGED, PLAYERHOOK_ON_AFTER_SPEC_SLOT_CHANGED, PLAYERHOOK_ON_UPDATE,
                         PLAYERHOOK_ON_DELETE, PLAYERHOOK_CAN_LEARN_TALENT, PLAYERHOOK_CAN_PLAYER_USE_PRIVATE_CHAT,
-                        PLAYERHOOK_ON_PLAYER_LEARN_TALENTS, PLAYERHOOK_ON_TALENTS_RESET})
+                        PLAYERHOOK_ON_PLAYER_LEARN_TALENTS, PLAYERHOOK_ON_TALENTS_RESET, PLAYERHOOK_CAN_LOAD_PET})
     {
+    }
+
+    // A path without pets keeps the hunter's pets in the stable: no call, revive, stable swap, login or dismount
+    // brings one out
+    bool OnPlayerCanLoadPet(Player* player, PetType petType) override
+    {
+        Path const* path = SubclassPaths::ActivePath(player);
+        return petType != HUNTER_PET || SubclassPaths::PetAllowed(path != nullptr, !path || path->pets);
     }
 
     void OnPlayerLogin(Player* player) override
