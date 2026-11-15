@@ -2773,11 +2773,25 @@ namespace lfg
         return PlayersStore[guid].GetRandomPlayersCount();
     }
 
+    namespace
+    {
+        LFGMgr::AvoidCheck avoidCheck = nullptr;
+    }
+
+    void LFGMgr::SetAvoidCheck(AvoidCheck check)
+    {
+        avoidCheck = check;
+    }
+
     bool LFGMgr::HasIgnore(ObjectGuid guid1, ObjectGuid guid2)
     {
         Player* plr1 = ObjectAccessor::FindConnectedPlayer(guid1);
         Player* plr2 = ObjectAccessor::FindConnectedPlayer(guid2);
-        return plr1 && plr2 && (plr1->GetSocial()->HasIgnore(guid2) || plr2->GetSocial()->HasIgnore(guid1));
+        if (!plr1 || !plr2)
+            return false;
+        if (plr1->GetSocial()->HasIgnore(guid2) || plr2->GetSocial()->HasIgnore(guid1))
+            return true;
+        return avoidCheck && (avoidCheck(guid1, guid2) || avoidCheck(guid2, guid1));
     }
 
     void LFGMgr::SendLfgRoleChosen(ObjectGuid guid, ObjectGuid pguid, uint8 roles)
