@@ -13,7 +13,7 @@
 #include "SpellMgr.h"
 #include "SpellScript.h"
 #include "SpellScriptLoader.h"
-#include "SubclassPaths.h"
+#include "../../SubclassPaths.h"
 
 // The Witch Doctor's spells and wards (data/sql/custom/db_world/subclasses/2026_11_16_01_witch_doctor_path.sql).
 namespace
