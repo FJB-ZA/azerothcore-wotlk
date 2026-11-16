@@ -27,6 +27,7 @@ void AddSC_subclass_trainer();
 void AddSC_subclass_combat();
 void AddSC_subclass_minions();
 void AddSC_subclass_npc();
+void AddSC_unit_spec();
 void AddSC_gladiator_spells();
 void AddSC_necromancer_quests();
 void AddSC_nameplate_test();
@@ -64,6 +65,7 @@ void AddCustomScripts()
     AddSC_subclass_combat();
     AddSC_subclass_minions();
     AddSC_subclass_npc();
+    AddSC_unit_spec();
     AddSC_gladiator_spells();
     AddSC_necromancer_quests();
     AddSC_nameplate_test();
