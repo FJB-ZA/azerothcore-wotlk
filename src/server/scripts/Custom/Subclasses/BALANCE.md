@@ -95,5 +95,18 @@ Getting there found these in the harness and the bots, each fixed and measured a
 - In 180-second fights Destruction bots still run dry at about 110 seconds; 90-second fights end before that at 60,
   but not quite at 40.
 
+The Ranger, 2026-11-16, levels 20, 40 and 60, Marksmanship and Survival: every run between -2.3% and +2.6%, Survival
+at 20 a pass and the rest inside the budget with margins past it (a hunter's damage swings from fight to fight).
+Ranger's Focus, +100% Auto Shot, is the harness's number. The rows, and the settings tried on the way, are in
+`Ranger/balance.md`. Getting there found:
+
+- A talent's trained ranks survived a bot's reset when it had no spec slot: the Ranger bot had level 80's Aimed Shot
+  and Black Arrow at 40 and 60.
+- A bot's strategies can be reset mid-run, which brought "dps assist" back and sent it to the other bot's dummy. The
+  harness now puts the run's strategies back on every tick and says so; the trace marks a stray target with "x".
+  The Necromancer and Gladiator rows were measured before this guard, so a reset could have touched them unseen.
+- Hunter bots only started Auto Shot when every shot above it failed, which a hunter without a pet and with Steady
+  Shot always ready never did. They now start it whenever it isn't running, in every hunter bot.
+
 Still open: the two bots' races. At level 40 Destruction the gnome's Intellect was worth about 3 points either way.
 `swap 1` and averaging the two runs handles it; two bots of the same race would be cleaner.
