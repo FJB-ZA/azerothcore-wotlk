@@ -2308,7 +2308,7 @@ uint8 Aura::GetProcEffectMask(AuraApplication* aurApp, ProcEventInfo& eventInfo,
         return 0;
 
     // do checks against db data
-    if (!sSpellMgr->CanSpellTriggerProcOnEvent(*procEntry, eventInfo))
+    if (!sSpellMgr->CanSpellTriggerProcOnEvent(*procEntry, eventInfo, aurApp->GetTarget() == eventInfo.GetActor()))
         return 0;
 
     // check if spell was affected by this aura's spellmod (used by Arcane Potency and similar effects)

@@ -890,7 +890,7 @@ SpellProcEntry const* SpellMgr::GetSpellProcEntry(uint32 spellId) const
     return nullptr;
 }
 
-bool SpellMgr::CanSpellTriggerProcOnEvent(SpellProcEntry const& procEntry, ProcEventInfo& eventInfo) const
+bool SpellMgr::CanSpellTriggerProcOnEvent(SpellProcEntry const& procEntry, ProcEventInfo& eventInfo, bool actorsOwn) const
 {
     // proc type doesn't match
     if (!(eventInfo.GetTypeMask() & procEntry.ProcFlags))
@@ -914,8 +914,14 @@ bool SpellMgr::CanSpellTriggerProcOnEvent(SpellProcEntry const& procEntry, ProcE
     if (eventInfo.GetTypeMask() & (PROC_FLAG_KILLED | PROC_FLAG_KILL | PROC_FLAG_DEATH))
         return true;
 
-    // check school mask (if set) for other trigger types
-    if (procEntry.SchoolMask && !(eventInfo.GetSchoolMask() & procEntry.SchoolMask))
+    // check school mask (if set) for other trigger types. solo-wow: the actor's own procs count a sub-class mirror as
+    // the school it replaces too (SpellInfo::BonusSchoolMask), as its other bonuses do: Elemental Focus procs on a
+    // Witch Doctor's shadow Voodoo Shock as on Flame Shock
+    uint32 eventSchool = eventInfo.GetSchoolMask();
+    if (actorsOwn)
+        if (SpellInfo const* eventSpellInfo = eventInfo.GetSpellInfo())
+            eventSchool |= eventSpellInfo->BonusSchoolMask & ~SPELL_SCHOOL_MASK_NORMAL;
+    if (procEntry.SchoolMask && !(eventSchool & procEntry.SchoolMask))
         return false;
 
     // check spell family name/flags (if set) for spells
