@@ -486,6 +486,7 @@ public: /* PlayerScript */
     void OnPlayerBeforeReceiveSpellListFromTrainer(Player* player, Creature* trainer, WorldPackets::NPC::TrainerList& trainerList);
     void OnPlayerGetTrainerSpellState(Player const* player, uint32 trainerId, uint32 spellId, Trainer::SpellState& state);
     void OnPlayerResolveTrainerSpell(Player const* player, uint32 trainerId, uint32& spellId);
+    bool OnPlayerCanLoadPet(Player* player, PetType petType);
     void OnPlayerAfterTrainSpell(Player* player, Creature* trainer, uint32 spellId);
 
     // Anti cheat

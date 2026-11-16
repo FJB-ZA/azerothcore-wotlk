@@ -64,6 +64,9 @@ CREATE TEMPORARY TABLE `necromancer_credit` AS SELECT * FROM `creature_template`
 UPDATE `necromancer_credit` SET `entry` = 990375, `name` = 'Last breath heard', `subname` = '', `ScriptName` = '';
 INSERT INTO `creature_template` SELECT * FROM `necromancer_credit`;
 DROP TEMPORARY TABLE `necromancer_credit`;
+DELETE FROM `creature_template_model` WHERE `CreatureID` = 990375;
+INSERT INTO `creature_template_model` (`CreatureID`, `Idx`, `CreatureDisplayID`, `DisplayScale`, `Probability`) VALUES
+(990375, 0, 10045, 1, 1);  -- entry 1's model: a credit creature is never seen, but every creature needs one
 
 DELETE FROM `quest_template` WHERE `ID` IN (990370, 990371);
 DROP TEMPORARY TABLE IF EXISTS `necromancer_quest`;
