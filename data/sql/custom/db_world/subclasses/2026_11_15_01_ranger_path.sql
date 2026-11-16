@@ -12,7 +12,8 @@ DELETE FROM `subclass_spell_remove` WHERE `path_id` = 3;
 INSERT INTO `subclass_spell_remove` (`path_id`, `spell`) VALUES
 (3, 883), (3, 2641), (3, 982), (3, 1515), (3, 6991), (3, 5149), (3, 1002), (3, 34026), (3, 53271), (3, 62757);
 
--- Ranger's Focus: the damage a pet would have dealt (+30%, tuned by the balance harness in ranger.json)
+-- Ranger's Focus: the damage a pet would have dealt, as more Auto Shot damage (Ranger/ranger_focus.cpp; the amount is
+-- the spell's, tuned by the balance harness in solo-wow's ranger.json)
 DELETE FROM `subclass_spell_grant` WHERE `path_id` = 3;
 INSERT INTO `subclass_spell_grant` (`path_id`, `spell`) VALUES (3, 990500);
 
