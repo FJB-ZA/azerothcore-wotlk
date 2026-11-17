@@ -4,8 +4,9 @@
 |---|---|---|---|
 | 1 Gladiator | Warrior | `Gladiator/` | 990100-990299, talent tab 990 |
 | 2 Necromancer | Warlock | `Necromancer/` | 990300-990499 in every table (spells, creatures, NPCs, quests, items, texts) |
-| 3 Ranger | Hunter | `Ranger/` | 990500-990699 in every table; no pet (`subclass_path.pets` = 0) |
+| 3 Ranger | Hunter | `Ranger/` | 990500-990599 in every table (the Starcaller has 990600-990699); no pet (`subclass_path.pets` = 0) |
 | 4 Witch Doctor | Shaman | `WitchDoctor/` | 990700-990899 in every table; wards are totems in other bodies |
+| 5 Starcaller | Druid | `Starcaller/` | spells 990600-990699 (the Ranger's block's second half), everything else 990650-990699 |
 
 Each path has its own folder here, and its world SQL is in `data/sql/custom/db_world/subclasses/`. The shared code
 that runs every path (`subclass_paths.cpp`, `SubclassPaths.h` and the rest) is one folder up, in `Custom/`.
