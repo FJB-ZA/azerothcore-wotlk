@@ -110,3 +110,19 @@ Ranger's Focus, +100% Auto Shot, is the harness's number. The rows, and the sett
 
 Still open: the two bots' races. At level 40 Destruction the gnome's Intellect was worth about 3 points either way.
 `swap 1` and averaging the two runs handles it; two bots of the same race would be cleaner.
+
+The Witch Doctor, 2026-11-17, levels 20, 40 and 60, Elemental and Enhancement, each run both ways round: every pair
+averages between -1.2% and +1.6%, three runs pass and the rest are inside the budget with margins past it. The path
+has no dial (every spell mirrors the shaman's), so this checks the mirrors, the wards and the bots. The rows are in
+`WitchDoctor/balance.md`. Getting there found:
+
+- A proc with a school in `spell_proc` (Elemental Focus) ignored a mirror of another school, so shadow Voodoo Shock
+  crits gave no Clearcasting. The actor's own procs now count a mirror's `BonusSchoolMask`.
+- Shaman bots looked for the shaman's own totem spells and creatures, so they didn't handle wards; they now take the
+  mirror and the ward's original creature.
+- A talent that teaches spells (Spirit Weapons, Dual Wield) failed the setup check, since the talent's own spell is
+  never in the spell book. The check now counts the spells it teaches.
+- `addclass` only adds the GM's own faction's bots, and shamans are Horde only before TBC: a run can set the GM's
+  race (solo-wow's `runs.json`).
+- A troll against a tauren was worth 2-4 points at Elemental 40 and 60 (Berserking, likely), so each run is made
+  both ways round and read as a pair.

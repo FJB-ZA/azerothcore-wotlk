@@ -711,7 +711,8 @@ public:
 
     // Spell proc table
     [[nodiscard]] SpellProcEntry const* GetSpellProcEntry(uint32 spellId) const;
-    bool CanSpellTriggerProcOnEvent(SpellProcEntry const& procEntry, ProcEventInfo& eventInfo) const;
+    // actorsOwn: the aura is the actor's own, so a sub-class mirror counts as the school it replaces too (solo-wow)
+    bool CanSpellTriggerProcOnEvent(SpellProcEntry const& procEntry, ProcEventInfo& eventInfo, bool actorsOwn = false) const;
 
     // Spell bonus data table
     [[nodiscard]] SpellBonusEntry const* GetSpellBonusData(uint32 spellId) const;
