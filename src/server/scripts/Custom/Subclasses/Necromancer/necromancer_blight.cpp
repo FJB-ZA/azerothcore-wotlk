@@ -250,7 +250,7 @@ std::list<Unit*> EnemiesNear(Player* player, Unit* center, float range)
     std::list<Unit*> found;
     Acore::AnyUnfriendlyUnitInObjectRangeCheck check(center, player, range);
     Acore::UnitListSearcher<Acore::AnyUnfriendlyUnitInObjectRangeCheck> searcher(center, found, check);
-    Cell::VisitAllObjects(center, searcher, range);
+    Cell::VisitObjects(center, searcher, range);
     return found;
 }
 
