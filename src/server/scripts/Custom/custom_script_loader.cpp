@@ -30,6 +30,7 @@ void AddSC_subclass_npc();
 void AddSC_unit_spec();
 void AddSC_gladiator_spells();
 void AddSC_necromancer_quests();
+void AddSC_necromancer_blight();
 void AddSC_ranger_quests();
 void AddSC_ranger_focus();
 void AddSC_witch_doctor_spells();
@@ -73,6 +74,7 @@ void AddCustomScripts()
     AddSC_unit_spec();
     AddSC_gladiator_spells();
     AddSC_necromancer_quests();
+    AddSC_necromancer_blight();
     AddSC_ranger_quests();
     AddSC_ranger_focus();
     AddSC_witch_doctor_spells();

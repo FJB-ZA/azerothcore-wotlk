@@ -3,8 +3,8 @@
 -- where the warlock has fire and fear. IDs 990300-990499 are this path's in every table (spells, creatures, NPCs,
 -- quests, items and texts). The minions are in the _01 file, the trainers, quests and book in the _02 file.
 DELETE FROM `subclass_path` WHERE `id` = 2;
-INSERT INTO `subclass_path` (`id`, `name`, `class`, `unlock_level`, `era`, `unlock_quest`, `damage_pve`, `damage_pvp`, `healing_pve`, `healing_pvp`, `talent_tab`, `bot_share`) VALUES
-(2, 'Necromancer', 9, 10, 0, 990371, 1, 1, 1, 1, 0, 0.25);
+INSERT INTO `subclass_path` (`id`, `name`, `class`, `unlock_level`, `era`, `unlock_quest`, `damage_pve`, `damage_pvp`, `healing_pve`, `healing_pvp`, `talent_tab`, `bot_share`, `role`) VALUES
+(2, 'Necromancer', 9, 10, 0, 990371, 1, 1, 1, 1, 991, 0.25, 3); -- tab 991 and the caster role: Blight (_03 file)
 
 -- Conflagrate and Summon Felguard are talents, which slots can't swap, so the warlock keeps them on this path.
 DELETE FROM `subclass_spell_swap` WHERE `path_id` = 2;
