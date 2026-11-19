@@ -33,6 +33,7 @@ void AddSC_necromancer_quests();
 void AddSC_necromancer_blight();
 void AddSC_ranger_quests();
 void AddSC_ranger_focus();
+void AddSC_ranger_windrunner();
 void AddSC_witch_doctor_spells();
 void AddSC_witch_doctor_quests();
 void AddSC_starcaller_quests();
@@ -77,6 +78,7 @@ void AddCustomScripts()
     AddSC_necromancer_blight();
     AddSC_ranger_quests();
     AddSC_ranger_focus();
+    AddSC_ranger_windrunner();
     AddSC_witch_doctor_spells();
     AddSC_witch_doctor_quests();
     AddSC_starcaller_quests();
