@@ -48,3 +48,30 @@ After the Life Tap fix (below), measured again with fights of 90 seconds, `.bala
   the gnome on the path. The mean of the two, which cancels the race, is +0.9% ± 2.9%.
 - Not measured yet: the 5-mob pack, duels, and levels 70 and 80. Two bots of the same race would remove the race
   effect from runs like Destruction at 40; the harness takes whichever bots `addclass` gives.
+
+## Blight
+
+The Necromancer's own tree (talent tab 3, `blight` premade spec 6) against plain Affliction (spec 0), 60-second
+fights, `.balance start 2 <level> 0 6 16 60`; the pack is `.balance pack 2 60 0 6 32 180 0 0 0 2`. Disease ranks
+as in solo-wow's `necromancer-tree.json` (Grave Worms and Plague of the Risen 54 a tick at 40 and 245 at 60).
+
+| Date | Level | Spec | Scenario | Plain | Path | Difference | Damage taken | Pet share | Verdict |
+|---|---|---|---|---|---|---|---|---|---|
+| 2026-11-19 | 20 | affli pve / blight | single target | 61.8 DPS | 62.8 DPS | +1.6% ± 1.9% | +0.0% | 13% / 12% | pass |
+| 2026-11-19 | 40 | affli pve / blight | single target | 203.1 DPS | 203.8 DPS | +0.3% ± 1.8% | +0.0% | 4% / 4% | pass |
+| 2026-11-19 | 60 | affli pve / blight | single target | 776.1 DPS | 782.7 DPS | +0.9% ± 1.8% | +0.0% | 8% / 9% | pass |
+| 2026-11-19 | 60 | affli pve / blight | 2-mob pack | 483.8 DPS | 485.2 DPS | +0.3% ± 7.1% | -13.3% ± 14.7% | 16% / 17% | inconclusive: too close to the budget for 32 fights; run more |
+
+### Reading
+
+- **Blight passes single target at 20, 40 and 60.** It took disease ranks to get there. With one rank whose ticks grew
+  by a fixed amount a level, Blight was 12% ahead at 20 and 7% behind at 40 (first ranks: 6% ahead at 40 and 14-17%
+  behind at 60). Affliction gains Unstable Affliction, Haunt and its Corruption talents from 40 on, and Affliction's
+  Corruption hits 1.7 times as hard as Blight's at 60, so the diseases tick below Corruption at 20, level with it at
+  40, and well above it from 50.
+- **The 2-mob pack is centred but inconclusive**, as the base path's was: fights of about 13 seconds swing ±10-20%.
+  A lone level 60 warlock, plain or Necromancer, dies to 3 or 5 mobs in most fights, so the 5-mob pack in the design
+  can't be measured.
+- Mutation and Raise Gargoyle are boosts: bots use them in hard fights (the pack), never on a dummy, like other
+  classes' cooldowns, so the single-target figures leave them out.
+- Not measured yet: the 20-point dip, levels 70 and 80, duels.
