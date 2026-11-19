@@ -133,11 +133,16 @@ uint64 Now()
 
 bool IsPlagueStrike(uint32 id) { return id >= PlagueStrikeFirst && id <= PlagueStrikeLast; }
 
+// A spell's first rank: Grave Worms, Plague of the Risen and Wasting Plague rank up with level (the core teaches the
+// ranks above the talent's), and every rank counts as the spell
+uint32 FirstRank(uint32 id) { return sSpellMgr->GetFirstSpellInChain(id); }
+
 // Plague Strike, Grave Worms, Plague of the Risen, Wasting Plague and Crypt Plague
 bool IsDisease(uint32 id)
 {
-    return IsPlagueStrike(id) || id == SpellGraveWorms || id == SpellPlagueOfTheRisen || id == SpellWastingPlague ||
-           id == SpellCryptPlague;
+    uint32 const first = FirstRank(id);
+    return IsPlagueStrike(id) || first == SpellGraveWorms || first == SpellPlagueOfTheRisen ||
+           first == SpellWastingPlague || id == SpellCryptPlague;
 }
 
 bool IsFrostNuke(uint32 id)
@@ -184,11 +189,12 @@ std::vector<Aura*> Diseases(Unit* target, ObjectGuid caster)
     return found;
 }
 
+// `exceptSpell` is a first rank: none of its ranks count
 uint32 CountDiseases(Unit* target, ObjectGuid caster, uint32 exceptSpell = 0)
 {
     uint32 count = 0;
     for (Aura* aura : Diseases(target, caster))
-        if (aura->GetId() != exceptSpell)
+        if (!exceptSpell || FirstRank(aura->GetId()) != exceptSpell)
             ++count;
     return count;
 }
@@ -320,6 +326,7 @@ float DamageBonusPct(Player* player, Unit* target, SpellInfo const* spellInfo, b
 {
     ObjectGuid const guid = player->GetGUID();
     uint32 const id = spellInfo->Id;
+    uint32 const first = FirstRank(id);
     float pct = 0.0f;
 
     if (target->GetAura(SpellPutridCommand, guid))
@@ -336,12 +343,12 @@ float DamageBonusPct(Player* player, Unit* target, SpellInfo const* spellInfo, b
         {
             int32 const perStack = sSpellMgr->AssertSpellInfo(SpellFester)->Effects[EFFECT_0].CalcValue();
             pct += perStack * fester;
-            if (id == SpellPlagueOfTheRisen)
+            if (first == SpellPlagueOfTheRisen)
                 pct += Talent(player, TalentHastenedEnd) * fester;
         }
-        if (id == SpellGraveWorms && target->HealthBelowPct(35))
+        if (first == SpellGraveWorms && target->HealthBelowPct(35))
             pct += Talent(player, TalentGravecrawl);
-        if (id == SpellWastingPlague)
+        if (first == SpellWastingPlague)
             pct += spellInfo->Effects[EFFECT_1].CalcValue() * CountDiseases(target, guid, SpellWastingPlague);
         if (id == SpellCryptPlague)
             pct += Talent(player, TalentWakingCrypts);

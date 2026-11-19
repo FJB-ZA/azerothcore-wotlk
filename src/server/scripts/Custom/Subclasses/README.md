@@ -20,6 +20,10 @@ that runs every path (`subclass_paths.cpp`, `SubclassPaths.h` and the rest) is o
    takes away with nothing in its place goes in `subclass_spell_remove` (the Ranger's pet spells), one it gives on
    top of the class's in `subclass_spell_grant` (Ranger's Focus), and `subclass_path.pets` = 0 keeps the class's
    pets in the stable while a slot follows the path.
+   A spell a tree talent teaches can have higher ranks (a `spell_ranks` chain from the talent's spell, which
+   solo-wow's spell data writes): a slot on the path gets each rank from that rank's `SpellLevel` on while it holds
+   the rank below, and loses it when it no longer qualifies, so the spell scales like the class's own (Blight's
+   Grave Worms). Its `spell_script_names` and `spell_proc` rows then take the first rank's negative id.
    A `subclass_creature_swap` row names a creature the path summons in place of the class's: a pet (the
    Necromancer's minions take the demon's stats) or a totem (the Witch Doctor's wards keep their own model, where
    the core would give a player's totem its race's).

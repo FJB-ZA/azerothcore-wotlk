@@ -219,6 +219,16 @@ void Reconcile(Player* player)
             else if (move == SubclassPaths::SpellMove::ToOriginal)
                 player->removeSpell(spellId, mask, false);
         }
+        // Removing a rank also removes the ranks above it, which then aren't held and aren't wanted
+        for (SubclassPaths::TreeRank const& rank : path.treeRanks)
+        {
+            bool const held = HasInSlot(player, rank.spell, group);
+            bool const wanted = onPath && player->GetLevel() >= rank.level && HasInSlot(player, rank.previous, group);
+            if (wanted && !held)
+                GiveSpell(player, rank.spell, mask);
+            else if (!wanted && held)
+                player->removeSpell(rank.spell, mask, false);
+        }
         for (SubclassPaths::SpellSwap const& swap : path.swaps)
         {
             bool const hasOriginal = HasInSlot(player, swap.original, group);
@@ -444,6 +454,29 @@ void LoadTree(Path& path, uint32 talentTabId)
         return;
     }
     path.talentTab = talentTabId;
+
+    // The ranks above the first of each spell a talent of the tree teaches: the talent gives the first, the slot's
+    // level the rest. A talent's own ranks are talents too and stay out.
+    path.treeRanks.clear();
+    for (uint32 i = 0; i < sTalentStore.GetNumRows(); ++i)
+    {
+        TalentEntry const* talent = sTalentStore.LookupEntry(i);
+        if (!talent || talent->TalentTab != talentTabId)
+            continue;
+        for (uint32 const taught : talent->RankID)
+        {
+            if (!taught)
+                continue;
+            uint32 previous = taught;
+            for (uint32 next = sSpellMgr->GetNextSpellInChain(taught); next && !GetTalentSpellPos(next);
+                 next = sSpellMgr->GetNextSpellInChain(next))
+            {
+                SpellInfo const* info = sSpellMgr->GetSpellInfo(next);
+                path.treeRanks.push_back({next, previous, uint8(info ? info->SpellLevel : 0)});
+                previous = next;
+            }
+        }
+    }
 }
 
 // A random bot's first slot takes the first path its bot share picks, then drops its talents so the AI respecs.

@@ -31,6 +31,15 @@ struct SpellSwap
     bool talent;  // the replacement is learned from the path's tree, not handed out by the swap
 };
 
+// A rank above the first of a spell the path's own tree teaches (Grave Worms): a slot that holds the rank below has it
+// from the rank's level on, as a class learns the ranks of its own spells
+struct TreeRank
+{
+    uint32 spell;
+    uint32 previous;
+    uint8 level;
+};
+
 struct Path
 {
     uint16 id;
@@ -44,6 +53,7 @@ struct Path
     std::vector<SpellSwap> swaps;  // highest rank first, because removing a rank also removes the ranks above it
     std::vector<uint32> removes;   // spells the path takes away with nothing in their place (subclass_spell_remove)
     std::vector<uint32> grants;    // spells only the path has (subclass_spell_grant)
+    std::vector<TreeRank> treeRanks;  // the tree's spells' higher ranks, each chain lowest first
     bool pets = true;              // false: the class's pets stay in the stable while a slot follows the path
 };
 
