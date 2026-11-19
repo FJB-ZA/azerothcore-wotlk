@@ -27,7 +27,7 @@ INSERT INTO `spell_bonus_data` (`entry`, `direct_bonus`, `dot_bonus`, `ap_bonus`
 (993015, 0, 0, 0, 0, 'Ranger - Barbed Tips bleed'),
 (993020, 0, 0, 0, 0, 'Ranger - Kindling splash');
 
--- Piercing Volley: a narrow line, and it ignores armor (SPELL_ATTR0_CU_IGNORE_ARMOR)
+-- Piercing Volley: a narrow line (it ignored armor too until 2026_11_19_02)
 DELETE FROM `spell_cone` WHERE `ID` = 993007;
 INSERT INTO `spell_cone` (`ID`, `ConeDegrees`) VALUES (993007, 10);
 DELETE FROM `spell_custom_attr` WHERE `spell_id` = 993007;
