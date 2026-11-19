@@ -61,6 +61,7 @@ as in solo-wow's `necromancer-tree.json` (Grave Worms and Plague of the Risen 54
 | 2026-11-19 | 40 | affli pve / blight | single target | 203.1 DPS | 203.8 DPS | +0.3% ± 1.8% | +0.0% | 4% / 4% | pass |
 | 2026-11-19 | 60 | affli pve / blight | single target | 776.1 DPS | 782.7 DPS | +0.9% ± 1.8% | +0.0% | 8% / 9% | pass |
 | 2026-11-19 | 60 | affli pve / blight | 2-mob pack | 483.8 DPS | 485.2 DPS | +0.3% ± 7.1% | -13.3% ± 14.7% | 16% / 17% | inconclusive: too close to the budget for 32 fights; run more |
+| 2026-11-19 | 60 | affli pve / blight dip | single target | 742.8 DPS | 741.0 DPS | -0.3% ± 2.5% | +0.0% | 9% / 9% | pass |
 
 ### Reading
 
@@ -74,4 +75,8 @@ as in solo-wow's `necromancer-tree.json` (Grave Worms and Plague of the Risen 54
   can't be measured.
 - Mutation and Raise Gargoyle are boosts: bots use them in hard fights (the pack), never on a dummy, like other
   classes' cooldowns, so the single-target figures leave them out.
-- Not measured yet: the 20-point dip, levels 70 and 80, duels.
+- **The 20-point dip doesn't beat Affliction.** `blight dip` (spec 7) is affli pve's first 31 points and Blight's
+  first 20 (Grave Worms, Plague of the Risen, Doomed Flesh, Festering Worms): -0.3% ± 2.5% against all 51 in
+  Affliction, so those 20 points buy nothing a class tree doesn't. A bot with Blight points under another main tree
+  runs the Blight strategy beside its own (mod-playerbots 5d9da582).
+- Not measured yet: levels 70 and 80, duels.
