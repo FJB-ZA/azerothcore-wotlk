@@ -17,7 +17,7 @@ INSERT INTO `subclass_spell_grant` (`path_id`, `spell`) VALUES (2, 992090);
 DELETE FROM `spell_bonus_data` WHERE `entry` IN (992000, 992001, 992002, 992006, 992009, 992011, 992016, 992019, 992021);
 INSERT INTO `spell_bonus_data` (`entry`, `direct_bonus`, `dot_bonus`, `ap_bonus`, `ap_dot_bonus`, `comments`) VALUES
 (992000, 0, 0.11, 0, 0, 'Necromancer - Grave Worms'),
-(992001, 0, 0.09, 0, 0, 'Necromancer - Plague of the Risen'),
+(992001, 0, 0.12, 0, 0, 'Necromancer - Plague of the Risen'),
 (992002, 0.5, 0, 0, 0, 'Necromancer - Plague of the Risen burst'),
 (992006, 0, 0.08, 0, 0, 'Necromancer - Wasting Plague'),
 (992009, 0.3, 0, 0, 0, 'Necromancer - Plague Bile (the gargoyle, its master''s spell power)'),

@@ -325,7 +325,8 @@ float DamageBonusPct(Player* player, Unit* target, SpellInfo const* spellInfo, b
     if (target->GetAura(SpellPutridCommand, guid))
         pct += sSpellMgr->AssertSpellInfo(SpellPutridCommand)->Effects[EFFECT_0].CalcValue();
 
-    if ((spellInfo->GetSchoolMask() & SPELL_SCHOOL_MASK_SHADOW) && target->HealthBelowPct(35))
+    // Doomed Flesh's second helping (its aura gives the first)
+    if ((spellInfo->GetSchoolMask() & (SPELL_SCHOOL_MASK_SHADOW | SPELL_SCHOOL_MASK_NATURE)) && target->HealthBelowPct(35))
         pct += Talent(player, TalentDoomedFlesh);
 
     bool const disease = IsDisease(id);
