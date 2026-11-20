@@ -54,9 +54,10 @@ side of the rows above under-cast it. A check of the base path with the fix in:
 | Date | Level | Spec | Scenario | Plain | Path | Difference | Damage taken | Pet share | Verdict |
 |---|---|---|---|---|---|---|---|---|---|
 | 2026-11-20 | 40 | mm pve / mm pve | single target | 118.2 DPS | 114.2 DPS | -3.3% ± 4.1% | +0.0% | 20% / 0% | inconclusive: too close to the budget for 16 fights; run more |
+| 2026-11-20 | 20 | mm pve / mm pve | single target | 40.4 DPS | 40.3 DPS | -0.2% ± 4.0% | +0.0% | 20% / 0% | pass |
 
-The plain hunter went from 86 to 118 DPS at 40, and the Ranger kept pace, so Ranger's Focus still holds. Levels 20 and
-60 have not been re-run.
+The plain hunter went from 86 to 118 DPS at 40 and from 26 to 40 at 20. The Ranger kept pace, so Ranger's Focus
+still holds.
 
 ## Windrunner
 
@@ -77,6 +78,12 @@ hunter's Marksmanship: `.balance start 3 <level> 1 6 16 60`.
 | 2026-11-20 | 60 | mm pve / windrunner | single target | 495.1 DPS | 489.1 DPS | -1.2% ± 4.2% | +0.0% | 14% / 0% | pass 2, Arcane Shot fixed: inconclusive |
 | 2026-11-20 | 40 | mm pve / windrunner | single target | 118.3 DPS | 131.2 DPS | +10.9% ± 4.8% | +0.0% | 19% / 0% | pass 3: FAIL |
 | 2026-11-20 | 60 | mm pve / windrunner | single target | 511.1 DPS | 494.1 DPS | -3.3% ± 3.9% | +0.0% | 13% / 0% | pass 3: inconclusive |
+| 2026-11-20 | 40 | mm pve / windrunner | single target | 116.0 DPS | 123.4 DPS | +6.3% ± 3.7% | +0.0% | 19% / 0% | pass 4: inconclusive |
+| 2026-11-20 | 60 | mm pve / windrunner | single target | 500.3 DPS | 514.0 DPS | +2.7% ± 2.2% | +0.0% | 13% / 0% | pass 4: pass |
+| 2026-11-20 | 20 | mm pve / windrunner | single target | 41.2 DPS | 43.7 DPS | +6.1% ± 2.9% | +0.0% | 22% / 0% | pass 4: inconclusive |
+| 2026-11-20 | 40 | mm pve / windrunner | single target | 120.4 DPS | 122.6 DPS | +1.8% ± 3.7% | +0.0% | 20% / 0% | pass 5: inside the budget, margin past it |
+| 2026-11-20 | 20 | mm pve / windrunner | single target | 38.9 DPS | 42.7 DPS | +9.8% ± 3.3% | +0.0% | 21% / 0% | pass 5: FAIL |
+| 2026-11-20 | 60 | mm pve / windrunner | single target | 541.5 DPS | 498.3 DPS | -8.0% ± 3.3% | +0.0% | 14% / 0% | pass 5: inconclusive |
 
 ### Reading
 
