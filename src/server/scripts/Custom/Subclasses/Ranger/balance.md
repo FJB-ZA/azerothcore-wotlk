@@ -56,7 +56,12 @@ side of the rows above under-cast it. A check of the base path with the fix in:
 | 2026-11-20 | 40 | mm pve / mm pve | single target | 118.2 DPS | 114.2 DPS | -3.3% ± 4.1% | +0.0% | 20% / 0% | inconclusive: too close to the budget for 16 fights; run more |
 | 2026-11-20 | 20 | mm pve / mm pve | single target | 40.4 DPS | 40.3 DPS | -0.2% ± 4.0% | +0.0% | 20% / 0% | pass |
 | 2026-11-20 | 60 | mm pve / mm pve | single target | 514.1 DPS | 522.9 DPS | +1.7% ± 5.4% | +0.0% | 13% / 0% | inconclusive: too close to the budget for 16 fights; run more |
+| 2026-11-20 | 60 | mm pve / mm pve | 2-mob pack | 448.2 DPS | 273.2 DPS | -39.0% ± 5.7% | +64.1% ± 15.6% | 25% / 0% | FAIL: damage outside the budget |
 
+**The base path fails the 2-mob pack.** With no pet to hold them, both mobs reach the Ranger. Inside its minimum
+range a hunter can't shoot, so its damage falls by more than a third while it takes every hit. Ranger's Focus pays
+back the pet's damage on one target at range, not its tanking. Windrunner's pack row (-24.7%) is 14 points better
+than this, so the tree isn't the cause. Fixing it is a change to the path, not the tree.
 The plain hunter went from 86 to 118 DPS at 40 and from 26 to 40 at 20. The Ranger kept pace, so Ranger's Focus
 still holds.
 
