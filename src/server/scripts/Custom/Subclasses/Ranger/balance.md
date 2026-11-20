@@ -55,6 +55,7 @@ side of the rows above under-cast it. A check of the base path with the fix in:
 |---|---|---|---|---|---|---|---|---|---|
 | 2026-11-20 | 40 | mm pve / mm pve | single target | 118.2 DPS | 114.2 DPS | -3.3% ± 4.1% | +0.0% | 20% / 0% | inconclusive: too close to the budget for 16 fights; run more |
 | 2026-11-20 | 20 | mm pve / mm pve | single target | 40.4 DPS | 40.3 DPS | -0.2% ± 4.0% | +0.0% | 20% / 0% | pass |
+| 2026-11-20 | 60 | mm pve / mm pve | single target | 514.1 DPS | 522.9 DPS | +1.7% ± 5.4% | +0.0% | 13% / 0% | inconclusive: too close to the budget for 16 fights; run more |
 
 The plain hunter went from 86 to 118 DPS at 40 and from 26 to 40 at 20. The Ranger kept pace, so Ranger's Focus
 still holds.
@@ -84,6 +85,9 @@ hunter's Marksmanship: `.balance start 3 <level> 1 6 16 60`.
 | 2026-11-20 | 40 | mm pve / windrunner | single target | 120.4 DPS | 122.6 DPS | +1.8% ± 3.7% | +0.0% | 20% / 0% | pass 5: inside the budget, margin past it |
 | 2026-11-20 | 20 | mm pve / windrunner | single target | 38.9 DPS | 42.7 DPS | +9.8% ± 3.3% | +0.0% | 21% / 0% | pass 5: FAIL |
 | 2026-11-20 | 60 | mm pve / windrunner | single target | 541.5 DPS | 498.3 DPS | -8.0% ± 3.3% | +0.0% | 14% / 0% | pass 5: inconclusive |
+| 2026-11-20 | 20 | mm pve / windrunner | single target | 40.6 DPS | 39.8 DPS | -2.0% ± 4.6% | +0.0% | 22% / 0% | pass 6: inside the budget, margin past it |
+| 2026-11-20 | 40 | mm pve / windrunner | single target | 121.7 DPS | 115.2 DPS | -5.3% ± 4.2% | +0.0% | 20% / 0% | pass 6: inconclusive |
+| 2026-11-20 | 60 | mm pve / windrunner | single target | 501.6 DPS | 446.7 DPS | -10.9% ± 4.0% | +0.0% | 13% / 0% | pass 6: FAIL |
 
 ### Reading
 
