@@ -45,3 +45,58 @@ weapon bonus counted.
     all 1,931 trace samples.
 - Not measured yet: the 2-mob pack (where the pet's tanking shows up as damage taken, and Field Dressing is the
   dial), duels, and levels 70 and 80.
+
+## After the Arcane Shot fix
+
+Every hunter bot without Explosive Shot used to skip Arcane Shot (see the Windrunner findings below), so the plain
+side of the rows above under-cast it. A check of the base path with the fix in:
+
+| Date | Level | Spec | Scenario | Plain | Path | Difference | Damage taken | Pet share | Verdict |
+|---|---|---|---|---|---|---|---|---|---|
+| 2026-11-20 | 40 | mm pve / mm pve | single target | 118.2 DPS | 114.2 DPS | -3.3% ± 4.1% | +0.0% | 20% / 0% | inconclusive: too close to the budget for 16 fights; run more |
+
+The plain hunter went from 86 to 118 DPS at 40, and the Ranger kept pace, so Ranger's Focus still holds. Levels 20 and
+60 have not been re-run.
+
+## Windrunner
+
+The Ranger's own talent tree (`ranger_windrunner.cpp`, design in solo-wow's
+`docs/superpowers/specs/2026-11-19-subclasses-ranger-tree-design.md`), as the "windrunner" spec, against the plain
+hunter's Marksmanship: `.balance start 3 <level> 1 6 16 60`.
+
+| Date | Level | Spec | Scenario | Plain | Path | Difference | Damage taken | Pet share | Verdict |
+|---|---|---|---|---|---|---|---|---|---|
+| 2026-11-19 | 60 | mm pve / windrunner | single target | 468.4 DPS | 462.9 DPS | -1.2% ± 4.3% | +0.0% | 14% / 0% | pass 1, before the Serrated Shot fix |
+| 2026-11-19 | 20 | mm pve / windrunner | single target | 26.1 DPS | 26.9 DPS | +3.0% ± 1.9% | +0.0% | 32% / 0% | pass 1 |
+| 2026-11-19 | 60 | mm pve / windrunner | single target | 462.7 DPS | 505.0 DPS | +9.2% ± 4.9% | +0.0% | 15% / 0% | pass 1 with Serrated and Arcane Shot cast |
+| 2026-11-19 | 40 | mm pve / windrunner | single target | 86.9 DPS | 132.9 DPS | +52.9% ± 4.2% | +0.0% | 26% / 0% | pass 2; the plain bot skipped Arcane Shot |
+| 2026-11-19 | 60 | mm pve / windrunner | single target | 486.0 DPS | 499.0 DPS | +2.7% ± 4.0% | +0.0% | 16% / 0% | pass 2; the plain bot skipped Arcane Shot |
+| 2026-11-19 | 20 | mm pve / windrunner | single target | 27.2 DPS | 45.8 DPS | +68.3% ± 4.0% | +0.0% | 33% / 0% | pass 2; the plain bot skipped Arcane Shot |
+| 2026-11-20 | 20 | mm pve / windrunner | single target | 40.7 DPS | 44.0 DPS | +8.1% ± 3.9% | +0.0% | 22% / 0% | pass 2, Arcane Shot fixed: inconclusive |
+| 2026-11-20 | 40 | mm pve / windrunner | single target | 117.8 DPS | 139.5 DPS | +18.4% ± 3.9% | +0.0% | 20% / 0% | pass 2, Arcane Shot fixed: FAIL |
+| 2026-11-20 | 60 | mm pve / windrunner | single target | 495.1 DPS | 489.1 DPS | -1.2% ± 4.2% | +0.0% | 14% / 0% | pass 2, Arcane Shot fixed: inconclusive |
+| 2026-11-20 | 40 | mm pve / windrunner | single target | 118.3 DPS | 131.2 DPS | +10.9% ± 4.8% | +0.0% | 19% / 0% | pass 3: FAIL |
+| 2026-11-20 | 60 | mm pve / windrunner | single target | 511.1 DPS | 494.1 DPS | -3.3% ± 3.9% | +0.0% | 13% / 0% | pass 3: inconclusive |
+
+### Reading
+
+- **The passes.** The first build had Advantage at +20% a stack, Precision Shot at 100% weapon damage, Final Arrow
+  at 250%, Piercing Volley at 450% ignoring armor, Corroded Hide at 10/20% and Open Wounds at 5/10%. It ran about
+  +75% at 60. Pass 1 set Advantage to 10% a stack, Precision Shot to 70%, Final Arrow to 150% and Piercing Volley to
+  300% with the armor ignore removed. Pass 2 set Corroded Hide to 5/10%, Open Wounds to 3/6% and Piercing Volley to
+  200%. With the bot faults fixed, that left 60 even and 40 at +18%.
+- **Why 40 and not 60.** Marksmanship gets most of its damage late (Chimera Shot, more Steady Shot), while
+  Windrunner's flat passives sat at tiers 5 and 6, inside a level 40 build. Against the dummy's 9729 armor at every
+  level, ignoring 10% of it is worth about 8% of physical damage at 20 and 40 (6.6% at 60), and the sting that Open
+  Wounds needs is always up. Pass 3 moves Corroded Hide to tier 8 and Open Wounds to tier 7, trades Barbed Tips and
+  Heavy Draw up into their places, sets Ricochet Shot to 60% weapon damage and raises Piercing Volley to 250%.
+- **Bot and harness faults found here, fixed in the playerbots fork:**
+  - The tree's strategy shared a sibling group with the path strategies, so adding "windrunner" removed "ranger" and
+    the other way round, and the bot never cast a Windrunner spell. Trees now have their own strategy context.
+  - The harness cloned the plain bot's bow onto the path bot but not its arrows; the path bot stood idle with the
+    wrong ammo. It now stocks ammo after the clone.
+  - Serrated Shot's debuff trigger asked for a target expected to live a while, which a training dummy never
+    reports, so it was never cast. It now checks only the aura.
+  - Hunter bots without Explosive Shot never cast Arcane Shot: an armor penetration check meant for Survival
+    stopped everyone else. It now applies only with Explosive Shot. That raises every Marksmanship and Beast Mastery
+    hunter bot, and the plain side of every row before 2026-11-20.
