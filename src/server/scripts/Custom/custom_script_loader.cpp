@@ -36,6 +36,7 @@ void AddSC_ranger_focus();
 void AddSC_ranger_windrunner();
 void AddSC_witch_doctor_spells();
 void AddSC_witch_doctor_quests();
+void AddSC_witch_doctor_hexcraft();
 void AddSC_starcaller_quests();
 void AddSC_nameplate_test();
 void AddSC_mythic_storage();
@@ -81,6 +82,7 @@ void AddCustomScripts()
     AddSC_ranger_windrunner();
     AddSC_witch_doctor_spells();
     AddSC_witch_doctor_quests();
+    AddSC_witch_doctor_hexcraft();
     AddSC_starcaller_quests();
     AddSC_nameplate_test();
     AddSC_mythic_storage();

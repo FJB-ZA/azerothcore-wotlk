@@ -52,3 +52,9 @@ In the unswapped rows the troll is the Witch Doctor; in the swapped rows the tau
   - A human GM got no shaman bots, since `addclass` only adds its own faction's: the runs can now set the GM's race.
 - Not measured yet: Restoration (the path doesn't touch healing), the pack (where Voodoo Ward and Spirit Nova earn
   their keep), duels, and levels 70 and 80.
+
+## Hexcraft
+
+The path's own tree (talent tab 993, `witch_doctor_hexcraft.cpp`). Its runs go here: Hexcraft against the better of
+plain Elemental and Enhancement on the dummy at 20, 40 and 60, the 2-mob pack at 60, and the 20-point dip against 51
+points of Elemental. No runs yet.

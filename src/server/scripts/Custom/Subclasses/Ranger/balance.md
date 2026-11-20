@@ -91,7 +91,14 @@ hunter's Marksmanship: `.balance start 3 <level> 1 6 16 60`.
 | 2026-11-20 | 60 | mm pve / windrunner | single target (32 fights) | 505.1 DPS | 495.9 DPS | -1.8% ± 3.2% | +0.0% | 14% / 0% | pass 7: inside the budget, margin past it |
 | 2026-11-20 | 40 | mm pve / windrunner | single target | 117.7 DPS | 117.6 DPS | -0.1% ± 3.8% | +0.0% | 20% / 0% | pass 7: pass |
 | 2026-11-20 | 20 | mm pve / windrunner | single target | 40.3 DPS | 40.2 DPS | -0.3% ± 3.5% | +0.0% | 21% / 0% | pass 7: pass |
+| 2026-11-20 | 60 | mm pve / windrunner dip | single target | 525.8 DPS | 399.4 DPS | -24.0% ± 4.0% | +0.0% | 13% / 0% | pass 7, dip check: the dip doesn't beat 51 Marksmanship |
+| 2026-11-20 | 60 | mm pve / windrunner | 2-mob pack | 441.9 DPS | 332.6 DPS | -24.7% ± 4.7% | +46.3% ± 11.7% | 24% / 0% | pass 7: FAIL; the base path's pack row decides whether the tree or the missing pet is to blame |
 
+The dip check (`.balance start 3 60 1 7 16 60`) gives the Ranger 31 points of Marksmanship and Windrunner's first 20
+against the plain hunter's 51 in Marksmanship. It is there to show that a dip doesn't beat a full tree, and it falls
+far short: the dip has no Chimera Shot (about a fifth of the plain hunter's damage) and none of Marksmanship's deep
+passives, and Windrunner's first four tiers were kept modest on purpose (passes 4 to 6). Blight's dip came out even
+(-0.3%).
 ### Reading
 
 - **The passes.** The first build had Advantage at +20% a stack, Precision Shot at 100% weapon damage, Final Arrow
