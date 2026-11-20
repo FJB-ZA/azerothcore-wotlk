@@ -88,6 +88,9 @@ hunter's Marksmanship: `.balance start 3 <level> 1 6 16 60`.
 | 2026-11-20 | 20 | mm pve / windrunner | single target | 40.6 DPS | 39.8 DPS | -2.0% ± 4.6% | +0.0% | 22% / 0% | pass 6: inside the budget, margin past it |
 | 2026-11-20 | 40 | mm pve / windrunner | single target | 121.7 DPS | 115.2 DPS | -5.3% ± 4.2% | +0.0% | 20% / 0% | pass 6: inconclusive |
 | 2026-11-20 | 60 | mm pve / windrunner | single target | 501.6 DPS | 446.7 DPS | -10.9% ± 4.0% | +0.0% | 13% / 0% | pass 6: FAIL |
+| 2026-11-20 | 60 | mm pve / windrunner | single target (32 fights) | 505.1 DPS | 495.9 DPS | -1.8% ± 3.2% | +0.0% | 14% / 0% | pass 7: inside the budget, margin past it |
+| 2026-11-20 | 40 | mm pve / windrunner | single target | 117.7 DPS | 117.6 DPS | -0.1% ± 3.8% | +0.0% | 20% / 0% | pass 7: pass |
+| 2026-11-20 | 20 | mm pve / windrunner | single target | 40.3 DPS | 40.2 DPS | -0.3% ± 3.5% | +0.0% | 21% / 0% | pass 7: pass |
 
 ### Reading
 
@@ -101,6 +104,23 @@ hunter's Marksmanship: `.balance start 3 <level> 1 6 16 60`.
   level, ignoring 10% of it is worth about 8% of physical damage at 20 and 40 (6.6% at 60), and the sting that Open
   Wounds needs is always up. Pass 3 moves Corroded Hide to tier 8 and Open Wounds to tier 7, trades Barbed Tips and
   Heavy Draw up into their places, sets Ricochet Shot to 60% weapon damage and raises Piercing Volley to 250%.
+- **Passes 4 to 7.**
+  - Pass 4 moved damage from the early tiers to the late ones: Ricochet Shot to 30%, Serrated Shot lighter, Marked
+    Quarry's arrows to 60% and Piercing Volley to 300%.
+  - Pass 5 trimmed Barbed Edges to 5/10% and Precision Shot to 60%.
+  - Pass 6 found the base path even at 20, so 20's surplus came from the tree's first 11 points. It took Precision
+    Shot's and Serrated Shot's flat per-level damage out, gave them more ranged attack power instead, and cut Quick
+    Venom to 20%. Flat amounts are a third of their damage at 20 and under a fifth at 60.
+  - Pass 7 put damage back in the deep tiers after 60 fell to -11%: Piercing Volley 400%, Marked Quarry 80%, Heavy
+    Draw 15/30%, Precision Shot 80% and Ricochet Shot 45%.
+  - Pass 7 passes at 20 (-0.3%) and 40 (-0.1%), and 60 sits at -1.8% ± 3.2% over 32 fights.
+- **Noise between runs.** The same build at 60 ran from -11% to +3% between passes. Part of that is the passes, and
+  part is the runs themselves: each run rolls the plain bot a new pet (Claw or Bite) and new gear, and Precision Shot
+  swung from 1.6k to 4.4k a run as Telling Blow and Skirmish changed how Advantage was spent. A 16-fight margin of ±4%
+  understates it. Settle close calls with 32 fights or repeat runs.
+- **What carries over to the next trees.** Scale new damage from attack or spell power rather than per-level points.
+  Keep the passives this dummy flatters (armor ignore, "your DoT is up", "above 80% health") deep in the tree. Expect
+  the plain spec to gain most of its damage late.
 - **Bot and harness faults found here, fixed in the playerbots fork:**
   - The tree's strategy shared a sibling group with the path strategies, so adding "windrunner" removed "ranger" and
     the other way round, and the bot never cast a Windrunner spell. Trees now have their own strategy context.
