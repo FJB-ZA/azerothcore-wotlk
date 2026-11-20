@@ -7,6 +7,7 @@
  * option) any later version.
  */
 
+#include "AllSpellScript.h"
 #include "ScriptMgr.h"
 #include "SpellAuraEffects.h"
 #include "SpellInfo.h"
@@ -17,6 +18,11 @@
 // more damage, in percent. It stands in for the pet's damage, which the balance harness found to keep close to a
 // fixed share of a hunter's Auto Shot at every level and in both Marksmanship and Survival; a passive aura has no
 // way to touch Auto Shot alone, so the amount is a dummy and this hook applies it.
+//
+// It also lets the Ranger shoot point-blank. A hunter's shots can't be fired inside melee reach; a hunter with a pet
+// holds the mobs off, but a Ranger has none, and in the harness's 2-mob pack, with both mobs on it, the base path lost
+// 39% of its damage. The core skips the melee-reach part of a ranged spell's minimum range when this answers
+// yes; the client patch drops the Hunter Range row's ranged flag so the client lets the shot through.
 namespace
 {
 constexpr uint32 SpellRangersFocus = 990500;
@@ -36,7 +42,19 @@ public:
     }
 };
 
+class ranger_focus_point_blank : public AllSpellScript
+{
+public:
+    ranger_focus_point_blank() : AllSpellScript("ranger_focus_point_blank", {ALLSPELLHOOK_CAN_IGNORE_RANGED_MIN_RANGE}) { }
+
+    bool CanIgnoreRangedMinRange(Spell const* /*spell*/, Unit const* caster) override
+    {
+        return caster->IsPlayer() && caster->HasAura(SpellRangersFocus);
+    }
+};
+
 void AddSC_ranger_focus()
 {
     new ranger_focus_unit();
+    new ranger_focus_point_blank();
 }

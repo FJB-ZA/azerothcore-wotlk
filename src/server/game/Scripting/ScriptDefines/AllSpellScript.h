@@ -38,6 +38,7 @@ enum AllSpellHook
     ALLSPELLHOOK_ON_CAST,
     ALLSPELLHOOK_ON_PREPARE,
     ALLSPELLHOOK_ON_IS_AURA_EXCLUSIVE_BY_SPECIFIC_WITH,
+    ALLSPELLHOOK_CAN_IGNORE_RANGED_MIN_RANGE,
     ALLSPELLHOOK_END
 };
 
@@ -60,6 +61,10 @@ public:
     [[nodiscard]] virtual bool CanPrepare(Spell* /*spell*/, SpellCastTargets const* /*targets*/, AuraEffect const* /*triggeredByAura*/) { return true; }
 
     [[nodiscard]] virtual bool CanScalingEverything(Spell* /*spell*/) { return false; }
+
+    // A spell whose range is flagged ranged can't be cast inside the caster's melee reach (the hunter's dead zone);
+    // returning true lets this cast skip that check.
+    [[nodiscard]] virtual bool CanIgnoreRangedMinRange(Spell const* /*spell*/, Unit const* /*caster*/) { return false; }
 
     [[nodiscard]] virtual bool CanSelectSpecTalent(Spell* /*spell*/) { return true; }
 

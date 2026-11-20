@@ -650,6 +650,7 @@ public: /* SpellSC */
     void OnSpellCheckCast(Spell* spell, bool strict, SpellCastResult& res);
     bool CanPrepare(Spell* spell, SpellCastTargets const* targets, AuraEffect const* triggeredByAura);
     bool CanScalingEverything(Spell* spell);
+    bool CanIgnoreRangedMinRange(Spell const* spell, Unit const* caster);
     bool CanSelectSpecTalent(Spell* spell);
     void OnScaleAuraUnitAdd(Spell* spell, Unit* target, uint32 effectMask, bool checkIfValid, bool implicit, uint8 auraScaleMask, TargetInfo& targetInfo);
     void OnRemoveAuraScaleTargets(Spell* spell, TargetInfo& targetInfo, uint8 auraScaleMask, bool& needErase);

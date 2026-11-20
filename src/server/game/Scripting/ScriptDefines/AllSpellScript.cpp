@@ -39,6 +39,11 @@ bool ScriptMgr::CanScalingEverything(Spell* spell)
     CALL_ENABLED_BOOLEAN_HOOKS_WITH_DEFAULT_FALSE(AllSpellScript, ALLSPELLHOOK_CAN_SCALING_EVERYTHING, script->CanScalingEverything(spell));
 }
 
+bool ScriptMgr::CanIgnoreRangedMinRange(Spell const* spell, Unit const* caster)
+{
+    CALL_ENABLED_BOOLEAN_HOOKS_WITH_DEFAULT_FALSE(AllSpellScript, ALLSPELLHOOK_CAN_IGNORE_RANGED_MIN_RANGE, script->CanIgnoreRangedMinRange(spell, caster));
+}
+
 bool ScriptMgr::CanSelectSpecTalent(Spell* spell)
 {
     CALL_ENABLED_BOOLEAN_HOOKS(AllSpellScript, ALLSPELLHOOK_CAN_SELECT_SPEC_TALENT, !script->CanSelectSpecTalent(spell));

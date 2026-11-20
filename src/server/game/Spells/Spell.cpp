@@ -7414,8 +7414,10 @@ SpellCastResult Spell::CheckRange(bool strict)
         // Check min range - for ranged spells, min range is the spell's min range + melee range (no leeway)
         if (unitCaster && range_type == SPELL_RANGE_RANGED)
         {
-            float minRangeCombined = min_range + unitCaster->GetMeleeRange(target);
-            if (unitCaster->IsWithinRange(target, minRangeCombined))
+            // A script may let this caster shoot inside its melee reach (the Ranger path's point-blank shooting)
+            float meleeReach = sScriptMgr->CanIgnoreRangedMinRange(this, unitCaster) ? 0.0f : unitCaster->GetMeleeRange(target);
+            float minRangeCombined = min_range + meleeReach;
+            if (minRangeCombined > 0.0f && unitCaster->IsWithinRange(target, minRangeCombined))
                 return SPELL_FAILED_TOO_CLOSE;
         }
         else if (unitCaster && min_range > 0 && unitCaster->IsWithinCombatRange(target, min_range))
