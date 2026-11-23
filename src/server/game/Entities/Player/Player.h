@@ -2396,6 +2396,7 @@ public:
     {
         m_lastFallTime = time;
         m_lastFallZ = z;
+        m_lastFallFromClient = false;
     }
     void HandleFall(MovementInfo const& movementInfo);
 
@@ -3042,6 +3043,7 @@ private:
 
     uint32 m_lastFallTime;
     float  m_lastFallZ;
+    bool   m_lastFallFromClient;
 
     int32 m_MirrorTimer[MAX_TIMERS];
     uint8 m_MirrorTimerFlags;
